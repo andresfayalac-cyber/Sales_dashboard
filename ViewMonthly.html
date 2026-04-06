@@ -1,0 +1,141 @@
+<div id="monthly-content" class="monthly-wrapper">
+    
+    <div class="view-header" style="margin-bottom: 25px;">
+        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Monthly Trends</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Analyze financial performance and volume metrics over time.</p>
+    </div>
+
+    <!-- SECTION: Mini KPIs -->
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px;">
+        <!-- Total Sales in Period -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Total Sales (Period)</div>
+                <div class="kpi-value" id="mo-total-sales" style="font-size: 1.2rem;">--</div>
+            </div>
+        </div>
+
+        <!-- Total Profit in Period -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Total Profit (Period)</div>
+                <div class="kpi-value" id="mo-total-profit" style="font-size: 1.2rem; color: var(--success);">--</div>
+            </div>
+        </div>
+
+        <!-- Average Monthly Sales -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Avg Monthly Sales</div>
+                <div class="kpi-value" id="mo-avg-sales" style="font-size: 1.2rem; color: var(--primary-mid);">--</div>
+            </div>
+        </div>
+
+        <!-- Best Month by Sales -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Best Month (Sales)</div>
+                <div class="kpi-value" id="mo-best-sales-month" style="font-size: 1.1rem; color: var(--accent-1);">--</div>
+            </div>
+        </div>
+
+        <!-- Best Month by Profit -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Best Month (Profit)</div>
+                <div class="kpi-value" id="mo-best-profit-month" style="font-size: 1.1rem; color: var(--accent-2);">--</div>
+            </div>
+        </div>
+
+        <!-- Average Ticket -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Average Ticket</div>
+                <div class="kpi-value" id="mo-avg-ticket" style="font-size: 1.2rem;">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION: Main Charts -->
+    <div class="charts-grid cols-1">
+        <!-- Main Area/Line Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Financial Performance Over Time</h3>
+                <span class="badge badge-primary">Sales, Cost, Expenses & Profit</span>
+            </div>
+            <div class="chart-container" id="chart-monthly-main" style="min-height: 350px;"></div>
+        </div>
+    </div>
+
+    <!-- SECTION: Secondary Charts -->
+    <div class="charts-grid">
+        <!-- Stacked Column Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Monthly Composition</h3>
+                <span class="badge badge-warning">Cost + Expenses + Profit</span>
+            </div>
+            <div class="chart-container" id="chart-monthly-composition"></div>
+        </div>
+
+        <!-- Line Chart: Percentages -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Margin & Profit Margins</h3>
+                <span class="badge badge-success">% over time</span>
+            </div>
+            <div class="chart-container" id="chart-monthly-percentages"></div>
+        </div>
+    </div>
+
+    <!-- SECTION: Volume Charts -->
+    <div class="charts-grid">
+        <!-- Bar Chart: Transactions -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Transaction Volume</h3>
+                <span class="badge badge-primary">Count per month</span>
+            </div>
+            <div class="chart-container" id="chart-monthly-tx" style="min-height: 250px;"></div>
+        </div>
+
+        <!-- Line/Bar Chart: Avg Ticket -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Average Ticket Trend</h3>
+                <span class="badge badge-primary">Sales / Transactions</span>
+            </div>
+            <div class="chart-container" id="chart-monthly-ticket" style="min-height: 250px;"></div>
+        </div>
+    </div>
+
+    <!-- SECTION: Data Table -->
+    <div class="chart-card" style="margin-bottom: 30px;">
+        <div class="chart-header">
+            <h3 class="chart-title"><i class="fas fa-table" style="margin-right: 8px; color: var(--primary-mid);"></i>Monthly Detail Data</h3>
+        </div>
+        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="text-right">Sales</th>
+                        <th class="text-right">Cost</th>
+                        <th class="text-right">Expenses</th>
+                        <th class="text-right">Margin</th>
+                        <th class="text-right">Profit</th>
+                        <th class="text-center">Tx Count</th>
+                        <th class="text-center">Avg Margin %</th>
+                        <th class="text-center">Avg Profit %</th>
+                        <th class="text-right">Avg Ticket</th>
+                    </tr>
+                </thead>
+                <tbody id="table-monthly-body">
+                    <!-- Rows will be injected here by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>

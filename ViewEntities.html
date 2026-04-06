@@ -1,0 +1,167 @@
+<div id="entities-content" class="entities-wrapper">
+    
+    <div class="view-header" style="margin-bottom: 25px;">
+        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Entities Analysis</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Client and partner performance metrics and rankings.</p>
+    </div>
+
+    <!-- SECTION: Entity KPIs -->
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+        <!-- Total Entities -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Total Entities</div>
+                <div class="kpi-value" id="en-total-entities" style="font-size: 1.4rem; color: var(--primary-dark);">--</div>
+            </div>
+        </div>
+
+        <!-- Top Entity by Sales -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content" style="min-width: 0;">
+                <div class="kpi-title" style="font-size: 0.75rem;">Top Entity (Sales)</div>
+                <div class="kpi-value" id="en-top-sales" style="font-size: 1.1rem; color: var(--primary-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Sales Entity">--</div>
+            </div>
+        </div>
+
+        <!-- Top Entity by Profit -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content" style="min-width: 0;">
+                <div class="kpi-title" style="font-size: 0.75rem;">Top Entity (Profit)</div>
+                <div class="kpi-value" id="en-top-profit" style="font-size: 1.1rem; color: var(--success); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Profit Entity">--</div>
+            </div>
+        </div>
+
+        <!-- Average Sales per Entity -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Avg Sales / Entity</div>
+                <div class="kpi-value" id="en-avg-sales" style="font-size: 1.2rem;">--</div>
+            </div>
+        </div>
+
+        <!-- Average Tx per Entity -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Avg Tx / Entity</div>
+                <div class="kpi-value" id="en-avg-tx" style="font-size: 1.2rem;">--</div>
+            </div>
+        </div>
+
+        <!-- Most Recent Sale Date -->
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Last Activity</div>
+                <div class="kpi-value" id="en-last-date" style="font-size: 1.1rem; color: var(--text-muted);">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION: Rankings & Distributions -->
+    <div class="charts-grid">
+        <!-- Top 10 by Sales -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Top 10 Entities by Sales</h3>
+                <span class="badge badge-primary">Volume</span>
+            </div>
+            <div class="chart-container" id="chart-entities-sales" style="min-height: 350px;"></div>
+        </div>
+
+        <!-- Top 10 by Profit -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Top 10 Entities by Profit</h3>
+                <span class="badge badge-success">Bottom Line</span>
+            </div>
+            <div class="chart-container" id="chart-entities-profit" style="min-height: 350px;"></div>
+        </div>
+    </div>
+
+    <!-- SECTION: Advanced Analysis -->
+    <div class="charts-grid cols-1">
+        <!-- Scatter Plot: Sales vs Profit -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Sales vs Profit Distribution</h3>
+                <span class="badge badge-warning">Performance Matrix</span>
+            </div>
+            <div class="chart-container" id="chart-entities-scatter" style="min-height: 400px;"></div>
+        </div>
+    </div>
+
+    <div class="charts-grid">
+        <!-- Ranking: Profit Margin % -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Top Profit Margins (%)</h3>
+                <span class="badge badge-success">Efficiency</span>
+            </div>
+            <div class="chart-container" id="chart-entities-margin-pct" style="min-height: 300px;"></div>
+        </div>
+
+        <!-- Distribution: Transaction Count -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Transaction Volume Distribution</h3>
+                <span class="badge badge-primary">Activity Level</span>
+            </div>
+            <div class="chart-container" id="chart-entities-tx-dist" style="min-height: 300px;"></div>
+        </div>
+    </div>
+
+    <!-- SECTION: Detailed Data Table -->
+    <div class="chart-card" style="margin-bottom: 30px;">
+        <div class="chart-header" style="flex-direction: column; align-items: flex-start; gap: 15px;">
+            <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                <h3 class="chart-title"><i class="fas fa-list" style="margin-right: 8px; color: var(--primary-mid);"></i>Entity Directory</h3>
+            </div>
+            
+            <!-- Table Controls -->
+            <div style="display: flex; gap: 15px; width: 100%; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px; position: relative;">
+                    <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                    <input type="text" id="en-search-input" placeholder="Search entity name..." style="width: 100%; padding: 8px 12px 8px 35px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-family: 'Inter', sans-serif; font-size: 0.9rem; outline: none;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="en-sort-select" style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Sort by:</label>
+                    <select id="en-sort-select" style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-family: 'Inter', sans-serif; font-size: 0.9rem; outline: none; background-color: #fff; cursor: pointer;">
+                        <option value="sales_desc">Sales (High to Low)</option>
+                        <option value="profit_desc">Profit (High to Low)</option>
+                        <option value="margin_pct_desc">Margin % (High to Low)</option>
+                        <option value="tx_desc">Transactions (High to Low)</option>
+                        <option value="name_asc">Name (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Entity Name</th>
+                        <th class="text-right">Sales</th>
+                        <th class="text-right">Cost</th>
+                        <th class="text-right">Expenses</th>
+                        <th class="text-right">Margin</th>
+                        <th class="text-right">Profit</th>
+                        <th class="text-center">Tx Count</th>
+                        <th class="text-center">Margin %</th>
+                        <th class="text-center">Profit %</th>
+                        <th class="text-center">Last Sale</th>
+                    </tr>
+                </thead>
+                <tbody id="table-entities-body">
+                    <!-- Rows will be injected here by JS -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Empty State for Search -->
+        <div id="en-empty-state" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-muted);">
+            <i class="fas fa-search" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
+            <p>No entities found matching your search.</p>
+        </div>
+    </div>
+
+</div>

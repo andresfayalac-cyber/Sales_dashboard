@@ -1,0 +1,697 @@
+<script>
+/**
+ * Scripts.html
+ * Frontend Logic for Sales Intelligence Dashboard
+ */
+
+const appState = {
+    data: { overview: null, monthly: null, entities: null, productsLocations: null },
+    charts: {}, 
+    currentView: 'view-overview',
+    globalTimeFilter: 'all', // 'all', '12', '6', '1'
+    colors: {
+        primaryDark: '#021640', primaryMid: '#0066CC', primaryLight: '#0099CC',
+        accent1: '#4572C4', accent2: '#558ED5', success: '#1fa971',
+        warning: '#f39c12', danger: '#e74c3c', muted: '#6c757d'
+    },
+    palette: ['#0066CC', '#0099CC', '#4572C4', '#558ED5', '#021640']
+};
+
+// ============================================================================
+// FORMATTERS
+// ============================================================================
+const formatCurrency = (value, decimals = 2) => {
+    if (value === null || value === undefined || isNaN(value)) return '$0.00';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
+};
+
+const formatNumber = (value, decimals = 0) => {
+    if (value === null || value === undefined || isNaN(value)) return '0';
+    return new Intl.NumberFormat('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
+};
+
+const formatPercent = (value, decimals = 1) => {
+    if (value === null || value === undefined || isNaN(value)) return '0.0%';
+    return new Intl.NumberFormat('en-US', { style: 'percent', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
+};
+
+const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+};
+
+const formatMonth = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short' }).format(date);
+};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+const showLoading = (message = 'Loading data...') => {
+    document.getElementById('loading-text').innerText = message;
+    document.getElementById('loading-overlay').classList.remove('hidden');
+};
+const hideLoading = () => { document.getElementById('loading-overlay').classList.add('hidden'); };
+const showError = (message, title = 'Oops! Something went wrong.') => {
+    hideLoading();
+    document.getElementById('error-title').innerText = title;
+    document.getElementById('error-message').innerText = message;
+    document.getElementById('error-container').classList.remove('hidden');
+};
+const clearError = () => { document.getElementById('error-container').classList.add('hidden'); };
+const updateLastUpdated = () => {
+    const now = new Date();
+    document.getElementById('last-updated-time').innerText = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+};
+
+const runGS = (functionName, ...args) => {
+    return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[functionName](...args);
+    });
+};
+
+const destroyChartsByPrefix = (prefix) => {
+    Object.keys(appState.charts).forEach(key => {
+        if (key.startsWith(prefix)) {
+            try { appState.charts[key].destroy(); } catch(e){}
+            delete appState.charts[key];
+        }
+    });
+};
+
+const createChart = (containerId, options, chartKey) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const defaultOptions = { chart: { fontFamily: 'Inter, sans-serif', toolbar: { show: false }, background: 'transparent' }, theme: { mode: 'light' }, colors: appState.palette };
+    const finalOptions = deepMerge(defaultOptions, options);
+    const chart = new ApexCharts(container, finalOptions);
+    chart.render();
+    appState.charts[chartKey] = chart;
+};
+
+const deepMerge = (target, source) => {
+    const output = Object.assign({}, target);
+    if (isObject(target) && isObject(source)) {
+        Object.keys(source).forEach(key => {
+            if (isObject(source[key])) {
+                if (!(key in target)) Object.assign(output, { [key]: source[key] });
+                else output[key] = deepMerge(target[key], source[key]);
+            } else { Object.assign(output, { [key]: source[key] }); }
+        });
+    }
+    return output;
+};
+const isObject = (item) => (item && typeof item === 'object' && !Array.isArray(item));
+
+// ============================================================================
+// INITIALIZATION & NAVIGATION
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => { initApp(); });
+
+const initApp = async () => {
+    bindEvents();
+    showLoading('Initializing dashboard...');
+    try {
+        const bootstrapData = await runGS('getAppBootstrapData');
+        if (bootstrapData.overview.error) throw new Error(bootstrapData.overview.error);
+        appState.data.overview = bootstrapData.overview;
+        updateLastUpdated();
+        navigateTo('view-overview');
+    } catch (error) { showError(error.message || 'Failed to initialize application.'); }
+};
+
+const bindEvents = () => {
+    // Mobile Menu
+    const mobileBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const toggleMenu = () => { if(sidebar) sidebar.classList.toggle('open'); if(overlay) overlay.classList.toggle('active'); };
+    if(mobileBtn) mobileBtn.addEventListener('click', toggleMenu);
+    if(overlay) overlay.addEventListener('click', toggleMenu);
+
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768 && sidebar && overlay) { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
+            const targetView = e.currentTarget.getAttribute('data-target');
+            navigateTo(targetView);
+        });
+    });
+
+    // Global Time Filter
+    const globalFilter = document.getElementById('global-time-filter');
+    if (globalFilter) {
+        globalFilter.addEventListener('change', (e) => {
+            appState.globalTimeFilter = e.target.value;
+            if (appState.currentView === 'view-overview') renderOverview(appState.data.overview);
+            if (appState.currentView === 'view-entities') renderEntities(appState.data.entities);
+        });
+    }
+
+    document.getElementById('btn-refresh').addEventListener('click', async () => {
+        showLoading('Refreshing data from Google Sheets...');
+        try {
+            const res = await runGS('refreshAllDashboardData');
+            if (!res.success) throw new Error(res.message);
+            appState.data = { overview: null, monthly: null, entities: null, productsLocations: null };
+            await loadViewData(appState.currentView, true);
+            updateLastUpdated();
+            hideLoading();
+        } catch (error) { showError(error.message || 'Failed to refresh data.'); }
+    });
+
+    document.getElementById('btn-error-close').addEventListener('click', clearError);
+
+    const searchInput = document.getElementById('en-search-input');
+    const sortSelect = document.getElementById('en-sort-select');
+    if (searchInput) searchInput.addEventListener('input', renderEntitiesTable);
+    if (sortSelect) sortSelect.addEventListener('change', renderEntitiesTable);
+};
+
+const navigateTo = async (viewId) => {
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active', 'hidden'));
+    document.querySelectorAll('.view-section').forEach(el => { if (el.id !== viewId) el.classList.add('hidden'); else el.classList.add('active'); });
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.nav-item[data-target="${viewId}"]`).classList.add('active');
+    
+    // Show/Hide Global Filter based on view
+    const filterContainer = document.getElementById('global-filter-container');
+    if (viewId === 'view-overview' || viewId === 'view-entities') {
+        filterContainer.style.display = 'block';
+    } else {
+        filterContainer.style.display = 'none';
+    }
+
+    appState.currentView = viewId;
+    await loadViewData(viewId);
+};
+
+const loadViewData = async (viewId, forceRender = false) => {
+    try {
+        switch (viewId) {
+            case 'view-overview':
+                if (!appState.data.overview) { showLoading('Loading Overview...'); appState.data.overview = await runGS('getOverviewData'); if (appState.data.overview.error) throw new Error(appState.data.overview.error); }
+                renderOverview(appState.data.overview);
+                break;
+            case 'view-monthly':
+                if (!appState.data.monthly) { showLoading('Loading Monthly Trends...'); appState.data.monthly = await runGS('getMonthlyData'); if (appState.data.monthly.error) throw new Error(appState.data.monthly.error); }
+                if (forceRender || !appState.charts['mo_main']) renderMonthly(appState.data.monthly);
+                break;
+            case 'view-entities':
+                if (!appState.data.entities) { showLoading('Loading Entities...'); appState.data.entities = await runGS('getEntityData'); if (appState.data.entities.error) throw new Error(appState.data.entities.error); }
+                renderEntities(appState.data.entities); // Always re-render to apply filter
+                break;
+            case 'view-products-locations':
+                if (!appState.data.productsLocations) { showLoading('Loading Products & Locations...'); appState.data.productsLocations = await runGS('getProductLocationData'); if (appState.data.productsLocations.error) throw new Error(appState.data.productsLocations.error); }
+                if (forceRender || !appState.charts['pl_prod_sales']) renderProductsLocations(appState.data.productsLocations);
+                break;
+        }
+        hideLoading();
+    } catch (error) { showError(error.message || `Failed to load data for ${viewId}.`); }
+};
+
+// ============================================================================
+// RENDER: OVERVIEW
+// ============================================================================
+const renderOverview = (data) => {
+    let sales = data.total_sales, cost = data.total_cost, expenses = data.total_expenses, margin = data.total_margin, profit = data.total_profit, tx = data.total_transactions;
+    
+    // Apply Global Time Filter if monthly data is available
+    if (appState.globalTimeFilter !== 'all' && data.monthly_data) {
+        const months = parseInt(appState.globalTimeFilter);
+        const cutoffDate = new Date();
+        cutoffDate.setMonth(cutoffDate.getMonth() - months);
+        
+        const filtered = data.monthly_data.filter(row => {
+            if(!row.month_start) return false;
+            const rowDate = new Date(row.month_start);
+            return rowDate >= cutoffDate;
+        });
+
+        sales = filtered.reduce((sum, r) => sum + (r.sales || 0), 0);
+        cost = filtered.reduce((sum, r) => sum + (r.cost || 0), 0);
+        expenses = filtered.reduce((sum, r) => sum + (r.expenses || 0), 0);
+        margin = filtered.reduce((sum, r) => sum + (r.margin || 0), 0);
+        profit = filtered.reduce((sum, r) => sum + (r.profit || 0), 0);
+        tx = filtered.reduce((sum, r) => sum + (r.tx_count || 0), 0);
+    }
+
+    const marginPct = sales > 0 ? margin / sales : 0;
+    const profitPct = sales > 0 ? profit / sales : 0;
+    const avgTicket = tx > 0 ? sales / tx : 0;
+
+    // Financial KPIs - NO DECIMALS
+    document.getElementById('ov-total-sales').innerText = formatCurrency(sales, 0);
+    document.getElementById('ov-total-cost').innerText = formatCurrency(cost, 0);
+    document.getElementById('ov-total-expenses').innerText = formatCurrency(expenses, 0);
+    document.getElementById('ov-total-margin').innerText = formatCurrency(margin, 0);
+    document.getElementById('ov-total-profit').innerText = formatCurrency(profit, 0);
+    
+    document.getElementById('ov-margin-pct').innerText = formatPercent(marginPct);
+    document.getElementById('ov-profit-pct').innerText = formatPercent(profitPct);
+    document.getElementById('ov-total-tx').innerText = formatNumber(tx);
+    document.getElementById('ov-avg-ticket').innerText = formatCurrency(avgTicket);
+    
+    document.getElementById('ov-top-location').innerText = data.top_location || 'N/A';
+    document.getElementById('ov-top-product').innerText = data.top_product || 'N/A';
+    document.getElementById('ov-top-entity').innerText = data.top_entity || 'N/A';
+
+    const insightsList = document.getElementById('ov-insights-list');
+    insightsList.innerHTML = '';
+    const insights = [
+        `<strong>Profitability:</strong> The overall profit margin stands at <span style="color:var(--success); font-weight:600;">${formatPercent(profitPct)}</span>, generating ${formatCurrency(profit, 0)} in net profit.`,
+        `<strong>Volume:</strong> A total of ${formatNumber(tx)} transactions were processed with an average ticket size of ${formatCurrency(avgTicket)}.`,
+        `<strong>Top Performers:</strong> <em>${data.top_product}</em> is leading product sales, while <em>${data.top_location}</em> is the top performing location.`
+    ];
+    insights.forEach(text => {
+        const li = document.createElement('li');
+        li.style.cssText = 'padding: 10px 0; display: flex; align-items: flex-start; gap: 12px; color: var(--text-main); font-size: 0.95rem; border-bottom: 1px solid var(--border-color);';
+        li.innerHTML = `<i class="fas fa-check-circle" style="color: var(--primary-light); margin-top: 3px;"></i><span>${text}</span>`;
+        insightsList.appendChild(li);
+    });
+    if(insightsList.lastChild) insightsList.lastChild.style.borderBottom = 'none';
+};
+
+// ============================================================================
+// RENDER: MONTHLY TRENDS
+// ============================================================================
+const renderMonthly = (data) => {
+    if (!document.querySelector("#chart-monthly-main")) return;
+    destroyChartsByPrefix('mo_');
+
+    document.getElementById('mo-total-sales').innerText = formatCurrency(data.kpis.total_cumulative_sales, 0);
+    document.getElementById('mo-total-profit').innerText = formatCurrency(data.kpis.total_cumulative_profit, 0);
+    const avgSales = data.table_data.length > 0 ? data.kpis.total_cumulative_sales / data.table_data.length : 0;
+    document.getElementById('mo-avg-sales').innerText = formatCurrency(avgSales, 0);
+    document.getElementById('mo-best-sales-month').innerText = formatMonth(data.kpis.best_month_by_sales);
+    document.getElementById('mo-best-profit-month').innerText = formatMonth(data.kpis.best_month_by_profit);
+    const totalTx = data.table_data.reduce((sum, row) => sum + row.tx_count, 0);
+    const avgTicket = totalTx > 0 ? data.kpis.total_cumulative_sales / totalTx : 0;
+    document.getElementById('mo-avg-ticket').innerText = formatCurrency(avgTicket);
+
+    const categories = data.categories.map(c => formatMonth(c));
+    
+    // X-Axis every 3 months
+    const xaxisConfig = {
+        categories: categories,
+        tickAmount: Math.max(1, Math.ceil(categories.length / 3)),
+        labels: { rotate: -45, style: { fontSize: '10px' } }
+    };
+
+    createChart('chart-monthly-main', {
+        series: [
+            { name: 'Sales', type: 'area', data: data.series_sales },
+            { name: 'Profit', type: 'line', data: data.series_profit },
+            { name: 'Cost', type: 'line', data: data.table_data.map(d => d.cost) },
+            { name: 'Expenses', type: 'line', data: data.table_data.map(d => d.expenses) }
+        ],
+        chart: { height: 350, type: 'line' },
+        stroke: { width: [0, 3, 2, 2], curve: 'smooth' },
+        fill: { type: ['solid', 'solid', 'solid', 'solid'], opacity: [0.1, 1, 1, 1] },
+        colors: [appState.colors.primaryMid, appState.colors.success, appState.colors.warning, appState.colors.danger],
+        xaxis: xaxisConfig,
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'mo_main');
+
+    createChart('chart-monthly-composition', {
+        series: [
+            { name: 'Profit', data: data.series_profit },
+            { name: 'Expenses', data: data.table_data.map(d => d.expenses) },
+            { name: 'Cost', data: data.table_data.map(d => d.cost) }
+        ],
+        chart: { type: 'bar', height: 300, stacked: true },
+        colors: [appState.colors.success, appState.colors.danger, appState.colors.warning],
+        xaxis: xaxisConfig,
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
+        dataLabels: { enabled: false }, // Removed fixed labels
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } },
+        legend: { position: 'top' }
+    }, 'mo_comp');
+
+    createChart('chart-monthly-percentages', {
+        series: [
+            { name: 'Margin %', data: data.table_data.map(d => d.avg_margin_pct * 100) },
+            { name: 'Profit %', data: data.table_data.map(d => d.avg_profit_pct * 100) }
+        ],
+        chart: { type: 'line', height: 300 },
+        stroke: { width: 3, curve: 'smooth' },
+        colors: [appState.colors.primaryLight, appState.colors.success],
+        xaxis: xaxisConfig,
+        yaxis: { labels: { formatter: (val) => val.toFixed(1) + '%' } },
+        tooltip: { y: { formatter: (val) => val.toFixed(2) + '%' } }
+    }, 'mo_pct');
+
+    createChart('chart-monthly-tx', {
+        series: [{ name: 'Transactions', data: data.table_data.map(d => d.tx_count) }],
+        chart: { type: 'bar', height: 250 },
+        colors: [appState.colors.primaryDark],
+        xaxis: xaxisConfig,
+        yaxis: { labels: { formatter: (val) => formatNumber(val) } },
+        dataLabels: { enabled: false } // Removed fixed labels
+    }, 'mo_tx');
+
+    createChart('chart-monthly-ticket', {
+        series: [{ name: 'Avg Ticket', data: data.table_data.map(d => d.avg_ticket) }],
+        chart: { type: 'area', height: 250 },
+        stroke: { width: 2, curve: 'straight' },
+        fill: { opacity: 0.2 },
+        colors: [appState.colors.accent1],
+        xaxis: xaxisConfig,
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
+        dataLabels: { enabled: false }, // Removed fixed labels
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'mo_ticket');
+
+    const tbody = document.getElementById('table-monthly-body');
+    if(tbody) {
+        tbody.innerHTML = '';
+        data.table_data.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${formatMonth(row.month_start)}</strong></td>
+                <td class="text-right">${formatCurrency(row.sales)}</td>
+                <td class="text-right">${formatCurrency(row.cost)}</td>
+                <td class="text-right">${formatCurrency(row.expenses)}</td>
+                <td class="text-right">${formatCurrency(row.margin)}</td>
+                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+                <td class="text-center">${formatNumber(row.tx_count)}</td>
+                <td class="text-center">${formatPercent(row.avg_margin_pct)}</td>
+                <td class="text-center" style="font-weight:500;">${formatPercent(row.avg_profit_pct)}</td>
+                <td class="text-right">${formatCurrency(row.avg_ticket)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+};
+
+// ============================================================================
+// RENDER: ENTITIES
+// ============================================================================
+const renderEntities = (data) => {
+    if (!document.querySelector("#chart-entities-sales")) return;
+    destroyChartsByPrefix('en_');
+
+    let filteredData = [...data.table_data];
+    
+    // Apply Global Time Filter
+    if (appState.globalTimeFilter !== 'all') {
+        const months = parseInt(appState.globalTimeFilter);
+        const cutoffDate = new Date();
+        cutoffDate.setMonth(cutoffDate.getMonth() - months);
+        
+        filteredData = filteredData.filter(row => {
+            if(!row.last_sale_date) return false;
+            const rowDate = new Date(row.last_sale_date);
+            return rowDate >= cutoffDate;
+        });
+    }
+
+    const totalSales = filteredData.reduce((sum, r) => sum + (r.sales || 0), 0);
+    const totalTx = filteredData.reduce((sum, r) => sum + (r.tx_count || 0), 0);
+    const sortedBySales = [...filteredData].sort((a,b) => (b.sales||0) - (a.sales||0));
+    const sortedByProfit = [...filteredData].sort((a,b) => (b.profit||0) - (a.profit||0));
+
+    document.getElementById('en-total-entities').innerText = formatNumber(filteredData.length);
+    document.getElementById('en-top-sales').innerText = sortedBySales.length > 0 ? sortedBySales[0].entity_name : '--';
+    document.getElementById('en-top-profit').innerText = sortedByProfit.length > 0 ? sortedByProfit[0].entity_name : '--';
+    document.getElementById('en-avg-sales').innerText = filteredData.length > 0 ? formatCurrency(totalSales / filteredData.length, 0) : '--';
+    document.getElementById('en-avg-tx').innerText = filteredData.length > 0 ? formatNumber(totalTx / filteredData.length, 1) : '--';
+    
+    let lastDate = '--';
+    if(filteredData.length > 0) {
+        const dates = filteredData.map(r => new Date(r.last_sale_date)).filter(d => !isNaN(d.getTime()));
+        if(dates.length > 0) lastDate = formatDate(new Date(Math.max.apply(null, dates)));
+    }
+    document.getElementById('en-last-date').innerText = lastDate;
+
+    const top10Sales = sortedBySales.slice(0, 10);
+    const top10Profit = sortedByProfit.slice(0, 10);
+    const sortedByMargin = [...filteredData].sort((a,b) => (b.avg_profit_pct||0) - (a.avg_profit_pct||0)).slice(0,10);
+
+    createChart('chart-entities-sales', {
+        series: [{ name: 'Sales', data: top10Sales.map(d => d.sales) }],
+        chart: { type: 'bar', height: 350 },
+        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+        colors: [appState.colors.primaryMid],
+        xaxis: { categories: top10Sales.map(d => d.entity_name), labels: { formatter: (val) => formatCurrency(val, 0) } },
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'en_sales');
+
+    createChart('chart-entities-profit', {
+        series: [{ name: 'Profit', data: top10Profit.map(d => d.profit) }],
+        chart: { type: 'bar', height: 350 },
+        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+        colors: [appState.colors.success],
+        xaxis: { categories: top10Profit.map(d => d.entity_name), labels: { formatter: (val) => formatCurrency(val, 0) } },
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'en_profit');
+
+    createChart('chart-entities-scatter', {
+        series: [{ name: 'Entities', data: filteredData.map(d => ({name: d.entity_name, x: d.sales, y: d.profit})) }],
+        chart: { type: 'scatter', height: 400, zoom: { enabled: true, type: 'xy' } },
+        colors: [appState.colors.accent1],
+        xaxis: { title: { text: 'Sales' }, labels: { formatter: (val) => formatCurrency(val, 0) }, tickAmount: 6 },
+        yaxis: { title: { text: 'Profit' }, labels: { formatter: (val) => formatCurrency(val, 0) } },
+        tooltip: {
+            custom: function({series, seriesIndex, dataPointIndex, w}) {
+                const pt = w.globals.initialSeries[seriesIndex].data[dataPointIndex];
+                return `<div style="padding: 10px; font-family: Inter, sans-serif;">
+                    <strong style="color:var(--primary-dark);">${pt.name}</strong><br/>
+                    <span style="font-size:0.85rem; color:var(--text-muted);">Sales:</span> ${formatCurrency(pt.x)}<br/>
+                    <span style="font-size:0.85rem; color:var(--text-muted);">Profit:</span> <span style="color:var(--success); font-weight:600;">${formatCurrency(pt.y)}</span>
+                </div>`;
+            }
+        }
+    }, 'en_scatter');
+
+    createChart('chart-entities-margin-pct', {
+        series: [{ name: 'Profit %', data: sortedByMargin.map(d => d.avg_profit_pct * 100) }],
+        chart: { type: 'bar', height: 300 },
+        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+        colors: [appState.colors.primaryLight],
+        xaxis: { categories: sortedByMargin.map(d => d.entity_name), labels: { formatter: (val) => val.toFixed(0) + '%' } },
+        dataLabels: { enabled: true, formatter: (val) => val.toFixed(2) + '%', style: { fontSize: '10px' } }, // 2 decimals on labels
+        tooltip: { y: { formatter: (val) => val.toFixed(2) + '%' } }
+    }, 'en_margin_pct');
+
+    const topTx = [...filteredData].sort((a,b) => b.tx_count - a.tx_count).slice(0, 10);
+    createChart('chart-entities-tx-dist', {
+        series: [{ name: 'Transactions', data: topTx.map(d => d.tx_count) }],
+        chart: { type: 'bar', height: 300 },
+        plotOptions: { bar: { horizontal: false, columnWidth: '50%', borderRadius: 4 } },
+        colors: [appState.colors.primaryDark],
+        xaxis: { categories: topTx.map(d => d.entity_name), labels: { rotate: -45, style: { fontSize: '10px' } } },
+        yaxis: { labels: { formatter: (val) => formatNumber(val) } }
+    }, 'en_tx');
+
+    // Update Table
+    appState.data.entities.filtered_table_data = filteredData; 
+    renderEntitiesTable();
+};
+
+const renderEntitiesTable = () => {
+    if (!appState.data.entities) return;
+    const searchInput = document.getElementById('en-search-input');
+    const sortSelect = document.getElementById('en-sort-select');
+    const tbody = document.getElementById('table-entities-body');
+    const emptyState = document.getElementById('en-empty-state');
+    if (!tbody) return;
+
+    const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+    const sortVal = sortSelect ? sortSelect.value : 'sales_desc';
+    let filtered = appState.data.entities.filtered_table_data || appState.data.entities.table_data;
+    
+    filtered = filtered.filter(row => row.entity_name.toLowerCase().includes(searchTerm));
+    filtered.sort((a, b) => {
+        switch (sortVal) {
+            case 'sales_desc': return b.sales - a.sales;
+            case 'profit_desc': return b.profit - a.profit;
+            case 'margin_pct_desc': return b.avg_margin_pct - a.avg_margin_pct;
+            case 'tx_desc': return b.tx_count - a.tx_count;
+            case 'name_asc': return a.entity_name.localeCompare(b.entity_name);
+            default: return b.sales - a.sales;
+        }
+    });
+
+    tbody.innerHTML = '';
+    if (filtered.length === 0) {
+        emptyState.style.display = 'block';
+        tbody.parentElement.style.display = 'none';
+    } else {
+        emptyState.style.display = 'none';
+        tbody.parentElement.style.display = 'table';
+        filtered.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${row.entity_name}</strong></td>
+                <td class="text-right">${formatCurrency(row.sales)}</td>
+                <td class="text-right">${formatCurrency(row.cost)}</td>
+                <td class="text-right">${formatCurrency(row.expenses)}</td>
+                <td class="text-right">${formatCurrency(row.margin)}</td>
+                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+                <td class="text-center">${formatNumber(row.tx_count)}</td>
+                <td class="text-center">${formatPercent(row.avg_margin_pct)}</td>
+                <td class="text-center" style="font-weight:500;">${formatPercent(row.avg_profit_pct)}</td>
+                <td class="text-center" style="font-size:0.8rem; color:var(--text-muted);">${formatDate(row.last_sale_date)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+};
+
+// ============================================================================
+// RENDER: PRODUCTS & LOCATIONS
+// ============================================================================
+const renderProductsLocations = (data) => {
+    if (!document.querySelector("#chart-product-sales")) return;
+    destroyChartsByPrefix('pl_');
+
+    const prod = data.products;
+    const loc = data.locations;
+
+    document.getElementById('pl-top-product-sales').innerText = prod.top_product_by_sales;
+    document.getElementById('pl-top-product-profit').innerText = prod.top_product_by_profit;
+    document.getElementById('pl-top-category').innerText = prod.top_category_by_sales;
+
+    const topProdSales = prod.list.slice(0, 10);
+    const topProdProfit = [...prod.list].sort((a,b) => b.profit - a.profit).slice(0, 10);
+
+    createChart('chart-product-sales', {
+        series: [{ name: 'Sales', data: topProdSales.map(d => d.sales) }],
+        chart: { type: 'bar', height: 250 },
+        plotOptions: { bar: { horizontal: false, borderRadius: 3 } }, // Changed to vertical
+        colors: [appState.colors.primaryMid],
+        xaxis: { categories: topProdSales.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } }, // Slanted labels
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } }, // No decimals
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'pl_prod_sales');
+
+    createChart('chart-product-profit', {
+        series: [{ name: 'Profit', data: topProdProfit.map(d => d.profit) }],
+        chart: { type: 'bar', height: 250 },
+        plotOptions: { bar: { horizontal: false, borderRadius: 3 } }, // Changed to vertical
+        colors: [appState.colors.success],
+        xaxis: { categories: topProdProfit.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } }, // Slanted labels
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } }, // No decimals
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'pl_prod_profit');
+
+    createChart('chart-product-category', {
+        series: prod.category_distribution.map(d => d.sales),
+        labels: prod.category_distribution.map(d => d.category),
+        chart: { type: 'donut', height: 250 },
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } },
+        legend: { position: 'bottom' }
+    }, 'pl_prod_cat');
+
+    createChart('chart-product-margins', {
+        series: [
+            { name: 'Margin %', data: topProdSales.map(d => d.avg_margin_pct * 100) },
+            { name: 'Profit %', data: topProdSales.map(d => d.avg_profit_pct * 100) }
+        ],
+        chart: { type: 'bar', height: 300 },
+        plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 2, dataLabels: { position: 'top' } } },
+        colors: [appState.colors.primaryLight, appState.colors.success],
+        xaxis: { categories: topProdSales.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } },
+        yaxis: { labels: { formatter: (val) => val.toFixed(0) + '%' } },
+        dataLabels: { enabled: true, formatter: (val) => val.toFixed(2) + '%', style: { fontSize: '9px', colors: ["#304758"] }, offsetY: -20 }, // 2 decimals
+        tooltip: { y: { formatter: (val) => val.toFixed(2) + '%' } }
+    }, 'pl_prod_margins');
+
+    const tbodyProd = document.getElementById('table-products-body');
+    if(tbodyProd) {
+        tbodyProd.innerHTML = '';
+        prod.list.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${row.product}</strong></td>
+                <td><span class="badge badge-primary">${row.category}</span></td>
+                <td class="text-right">${formatCurrency(row.sales)}</td>
+                <td class="text-right">${formatCurrency(row.cost)}</td>
+                <td class="text-right">${formatCurrency(row.margin)}</td>
+                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+                <td class="text-center">${formatPercent(row.avg_margin_pct)}</td>
+                <td class="text-center" style="font-weight:500;">${formatPercent(row.avg_profit_pct)}</td>
+            `;
+            tbodyProd.appendChild(tr);
+        });
+    }
+
+    document.getElementById('pl-top-location-sales').innerText = loc.top_location_by_sales;
+    document.getElementById('pl-top-location-target').innerText = loc.top_location_by_target_attainment;
+    const gapEl = document.getElementById('pl-target-gap');
+    if(gapEl) {
+        gapEl.innerText = formatCurrency(loc.total_target_gap);
+        if (loc.total_target_gap <= 0) {
+            gapEl.style.color = 'var(--success)';
+            gapEl.innerText = '+' + formatCurrency(Math.abs(loc.total_target_gap)) + ' (Over Target)';
+        }
+    }
+
+    createChart('chart-location-sales-target', {
+        series: [
+            { name: 'Actual Sales', data: loc.list.map(d => d.sales) },
+            { name: 'Target Sales', data: loc.list.map(d => d.target_sales) }
+        ],
+        chart: { type: 'bar', height: 250 },
+        plotOptions: { bar: { horizontal: false, columnWidth: '60%', borderRadius: 2, dataLabels: { position: 'top' } } },
+        colors: [appState.colors.primaryMid, appState.colors.warning],
+        xaxis: { categories: loc.list.map(d => d.location), labels: { rotate: -45, style: { fontSize: '10px' } } },
+        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
+        dataLabels: { enabled: true, formatter: (val) => formatCurrency(val, 0), style: { fontSize: '9px', colors: ["#304758"] }, offsetY: -20 }, // No decimals
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
+    }, 'pl_loc_vs');
+
+    createChart('chart-location-profit', {
+        series: loc.list.map(d => Math.max(0, d.profit)),
+        labels: loc.list.map(d => d.location),
+        chart: { type: 'donut', height: 250 },
+        tooltip: { y: { formatter: (val) => formatCurrency(val) } },
+        legend: { position: 'bottom' }
+    }, 'pl_loc_profit');
+
+    const sortedLoc = [...loc.list].sort((a,b) => b.target_attainment - a.target_attainment);
+    createChart('chart-location-attainment', {
+        series: [{ name: 'Attainment %', data: sortedLoc.map(d => d.target_attainment * 100) }],
+        chart: { type: 'bar', height: 350 }, // Increased height for full width
+        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
+        colors: [function({ value }) {
+            if (value >= 100) return appState.colors.success;
+            if (value >= 80) return appState.colors.warning;
+            return appState.colors.danger;
+        }],
+        xaxis: { categories: sortedLoc.map(d => d.location), labels: { formatter: (val) => val.toFixed(0) + '%' } },
+        tooltip: { y: { formatter: (val) => val.toFixed(1) + '%' } },
+        annotations: { xaxis: [{ x: 100, borderColor: appState.colors.success, label: { text: 'Target (100%)', style: { color: '#fff', background: appState.colors.success } } }] }
+    }, 'pl_loc_attain');
+
+    const tbodyLoc = document.getElementById('table-locations-body');
+    if(tbodyLoc) {
+        tbodyLoc.innerHTML = '';
+        loc.list.forEach(row => {
+            const variance = row.sales - row.target_sales;
+            const varianceColor = variance >= 0 ? 'var(--success)' : 'var(--danger)';
+            const attainmentColor = row.target_attainment >= 1 ? 'var(--success)' : (row.target_attainment >= 0.8 ? 'var(--warning)' : 'var(--danger)');
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${row.location}</strong></td>
+                <td class="text-right" style="font-weight:600;">${formatCurrency(row.sales)}</td>
+                <td class="text-right" style="color:var(--text-muted);">${formatCurrency(row.target_sales)}</td>
+                <td class="text-center" style="color:${attainmentColor}; font-weight:600;">${formatPercent(row.target_attainment)}</td>
+                <td class="text-right" style="color:${varianceColor};">${variance > 0 ? '+' : ''}${formatCurrency(variance)}</td>
+                <td class="text-right">${formatCurrency(row.cost)}</td>
+                <td class="text-right">${formatCurrency(row.expenses)}</td>
+                <td class="text-right">${formatCurrency(row.margin)}</td>
+                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+            `;
+            tbodyLoc.appendChild(tr);
+        });
+    }
+};
+</script>
