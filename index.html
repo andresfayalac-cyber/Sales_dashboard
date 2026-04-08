@@ -28,7 +28,7 @@
                 <ul id="nav-menu">
                     <li class="nav-item active" data-target="view-overview"><i class="fas fa-home"></i><span>Overview</span></li>
                     <li class="nav-item" data-target="view-monthly"><i class="fas fa-calendar-alt"></i><span>Monthly Trends</span></li>
-                    <li class="nav-item" data-target="view-entities"><i class="fas fa-building"></i><span>Entities</span></li>
+                    <li class="nav-item" data-target="view-entities"><i class="fas fa-users"></i><span>Clients</span></li>
                     <li class="nav-item" data-target="view-products-locations"><i class="fas fa-map-marker-alt"></i><span>Products & Locations</span></li>
                 </ul>
             </nav>
@@ -45,14 +45,17 @@
                 </div>
                 
                 <div class="header-right">
-                    <!-- Global Time Filter -->
                     <div class="global-filter" id="global-filter-container" style="display: none;">
-                        <select id="global-time-filter" style="padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-family: 'Inter', sans-serif; font-size: 0.85rem; outline: none; cursor: pointer; color: var(--primary-dark); font-weight: 500; background-color: var(--bg-color);">
-                            <option value="all">All Time</option>
-                            <option value="12">Last 12 Months</option>
-                            <option value="6">Last 6 Months</option>
-                            <option value="1">Last Month</option>
-                        </select>
+                        <div class="global-filter-row">
+                            <label for="global-time-filter" class="global-filter-label">Time Window</label>
+                            <select id="global-time-filter" class="exec-filter real-filter" style="border-left: 2px solid var(--primary-mid);">
+                                <option value="all">All Time (through Feb 2026)</option>
+                                <option value="12">Last 12 Months</option>
+                                <option value="6">Last 6 Months</option>
+                                <option value="3">Last 3 Months</option>
+                                <option value="1" selected>Last 1 Month</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="update-info"><span class="last-updated-label">Last updated:</span><span id="last-updated-time">--:--</span></div>

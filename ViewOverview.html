@@ -1,186 +1,224 @@
 <div id="overview-content" class="overview-wrapper">
-    
-    <div class="view-header" style="margin-bottom: 25px;">
-        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Executive Overview</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">High-level summary of business performance and key indicators.</p>
+
+    <div class="view-header overview-header" style="margin-bottom: 10px;">
+        <div class="overview-headline-block" style="max-width: 100%;">
+            <h2 id="ov-dynamic-headline" class="overview-main-headline">Loading executive summary...</h2>
+            <p id="ov-dynamic-subheadline" class="overview-subheadline">Preparing time context and KPIs...</p>
+        </div>
     </div>
 
-    <!-- SECTION: Financial Performance -->
-    <h3 style="font-size: 1.05rem; color: var(--primary-mid); margin-bottom: 15px; border-bottom: 2px solid var(--border-color); padding-bottom: 8px;">
-        <i class="fas fa-wallet" style="margin-right: 8px;"></i>Financial Performance
+    <h3 class="overview-section-title">
+        <i class="fas fa-wallet" style="margin-right: 8px; color: var(--primary-mid);"></i>Financial Performance
     </h3>
-    <div class="kpi-grid">
-        <!-- Total Sales -->
+    <div class="kpi-grid kpi-grid-compact overview-kpi-mobile-2col" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
         <div class="kpi-card">
             <div class="kpi-icon" style="background-color: rgba(0, 102, 204, 0.1); color: var(--primary-mid);">
                 <i class="fas fa-dollar-sign"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Total Sales</div>
+                <div class="kpi-title">TOTAL SALES</div>
                 <div class="kpi-value" id="ov-total-sales">--</div>
-                <div class="kpi-subtitle"><span class="badge badge-primary">Gross Revenue</span></div>
+                <div class="kpi-subtitle" id="ov-sales-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Total Cost -->
         <div class="kpi-card">
-            <div class="kpi-icon warning">
+            <div class="kpi-icon" style="background-color: rgba(245, 158, 11, 0.1); color: #f59e0b;">
                 <i class="fas fa-file-invoice-dollar"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Total Cost</div>
-                <div class="kpi-value" id="ov-total-cost">--</div>
-                <div class="kpi-subtitle">Direct costs</div>
+                <div class="kpi-title">TOTAL COST</div>
+                <div class="kpi-value" id="ov-total-cogs">--</div>
+                <div class="kpi-subtitle" id="ov-cogs-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Total Expenses -->
         <div class="kpi-card">
-            <div class="kpi-icon danger">
+            <div class="kpi-icon" style="background-color: rgba(239, 68, 68, 0.1); color: #ef4444;">
                 <i class="fas fa-receipt"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Total Expenses</div>
+                <div class="kpi-title">TOTAL EXPENSES</div>
                 <div class="kpi-value" id="ov-total-expenses">--</div>
-                <div class="kpi-subtitle">Operational expenses</div>
+                <div class="kpi-subtitle" id="ov-expenses-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Total Margin -->
         <div class="kpi-card">
             <div class="kpi-icon success">
-                <i class="fas fa-hand-holding-dollar"></i>
+                <i class="fas fa-hand-holding-usd"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Total Margin</div>
+                <div class="kpi-title">TOTAL MARGIN</div>
                 <div class="kpi-value" id="ov-total-margin">--</div>
-                <div class="kpi-subtitle">Sales - Cost</div>
+                <div class="kpi-subtitle" id="ov-margin-abs-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Total Profit -->
         <div class="kpi-card">
-            <div class="kpi-icon success">
+            <div class="kpi-icon" style="background-color: rgba(16, 185, 129, 0.1); color: #10b981;">
                 <i class="fas fa-chart-line"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Net Profit</div>
+                <div class="kpi-title">NET PROFIT</div>
                 <div class="kpi-value" id="ov-total-profit">--</div>
-                <div class="kpi-subtitle"><span class="badge badge-success">Bottom Line</span></div>
+                <div class="kpi-subtitle" id="ov-profit-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
     </div>
 
-    <!-- SECTION: Key Ratios & Volume -->
-    <h3 style="font-size: 1.05rem; color: var(--primary-mid); margin-bottom: 15px; border-bottom: 2px solid var(--border-color); padding-bottom: 8px; margin-top: 10px;">
-        <i class="fas fa-percentage" style="margin-right: 8px;"></i>Key Ratios & Volume
+    <h3 class="overview-section-title">
+        <i class="fas fa-percentage" style="margin-right: 8px; color: var(--primary-mid);"></i>Key Ratios & Volume
     </h3>
-    <div class="kpi-grid">
-        <!-- Margin % -->
-        <div class="kpi-card" style="border-left: 4px solid var(--primary-light);">
+    <div class="kpi-grid kpi-grid-compact overview-kpi-mobile-2col" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 25px;">
+        <div class="kpi-card" style="border-left: 3px solid var(--primary-light);">
             <div class="kpi-icon" style="background-color: rgba(0, 153, 204, 0.1); color: var(--primary-light);">
                 <i class="fas fa-divide"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Margin %</div>
+                <div class="kpi-title">MARGIN %</div>
                 <div class="kpi-value" id="ov-margin-pct" style="color: var(--primary-light);">--</div>
-                <div class="kpi-subtitle">Margin / Sales</div>
+                <div class="kpi-subtitle" id="ov-margin-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Profit % -->
-        <div class="kpi-card" style="border-left: 4px solid var(--success);">
+        <div class="kpi-card" style="border-left: 3px solid var(--success);">
             <div class="kpi-icon success">
                 <i class="fas fa-percent"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Profit %</div>
+                <div class="kpi-title">PROFIT %</div>
                 <div class="kpi-value" id="ov-profit-pct" style="color: var(--success);">--</div>
-                <div class="kpi-subtitle">Profit / Sales</div>
+                <div class="kpi-subtitle" id="ov-profit-pct-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Total Transactions -->
         <div class="kpi-card">
-            <div class="kpi-icon" style="background-color: rgba(2, 22, 64, 0.1); color: var(--primary-dark);">
+            <div class="kpi-icon" style="background-color: rgba(69, 114, 196, 0.1); color: var(--accent-1);">
                 <i class="fas fa-shopping-cart"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Total Transactions</div>
-                <div class="kpi-value" id="ov-total-tx">--</div>
-                <div class="kpi-subtitle">Volume count</div>
+                <div class="kpi-title">TOTAL TRANSACTIONS</div>
+                <div class="kpi-value" id="ov-total-transactions">--</div>
+                <div class="kpi-subtitle" id="ov-transactions-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
-
-        <!-- Average Ticket -->
         <div class="kpi-card">
             <div class="kpi-icon" style="background-color: rgba(69, 114, 196, 0.1); color: var(--accent-1);">
                 <i class="fas fa-ticket-alt"></i>
             </div>
             <div class="kpi-content">
-                <div class="kpi-title">Average Ticket</div>
+                <div class="kpi-title">AVERAGE TICKET</div>
                 <div class="kpi-value" id="ov-avg-ticket">--</div>
-                <div class="kpi-subtitle">Sales / Transactions</div>
+                <div class="kpi-subtitle" id="ov-ticket-subtitle" style="margin-top: 4px;">Loading...</div>
             </div>
         </div>
     </div>
 
-    <!-- SECTION: Top Performers -->
-    <h3 style="font-size: 1.05rem; color: var(--primary-mid); margin-bottom: 15px; border-bottom: 2px solid var(--border-color); padding-bottom: 8px; margin-top: 10px;">
-        <i class="fas fa-trophy" style="margin-right: 8px;"></i>Top Performers
+    <h3 class="overview-section-title">
+        <i class="fas fa-chart-area" style="margin-right: 8px; color: var(--primary-mid);"></i>Business Trend
     </h3>
-    <div class="kpi-grid">
-        <!-- Top Location -->
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background-color: rgba(85, 142, 213, 0.1); color: var(--accent-2);">
-                <i class="fas fa-map-marker-alt"></i>
+    <div class="charts-grid cols-1" style="margin-bottom: 25px;">
+        <div class="chart-card">
+            <div class="chart-header overview-chart-header">
+                <h3 class="chart-title" style="font-size: 0.95rem;">Revenue, Profit & Effectiveness Trajectory</h3>
+                <span id="ov-trend-caption" class="badge badge-primary">Loading period...</span>
             </div>
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title">Top Location</div>
-                <div class="kpi-value" id="ov-top-location" style="font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Location">--</div>
-                <div class="kpi-subtitle">By Sales Volume</div>
-            </div>
+            <div class="chart-container" id="chart-overview-trend" style="min-height: 290px;"></div>
         </div>
+    </div>
 
-        <!-- Top Product -->
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background-color: rgba(85, 142, 213, 0.1); color: var(--accent-2);">
+    <h3 class="overview-section-title">
+        <i class="fas fa-tachometer-alt" style="margin-right: 8px; color: var(--primary-mid);"></i>Drivers
+    </h3>
+    <div class="kpi-grid overview-driver-grid" style="margin-bottom: 25px;">
+        <div class="kpi-card kpi-card-mini" style="border-left: 4px solid var(--primary-mid); align-items: center;">
+            <div class="kpi-icon" style="background-color: rgba(0, 102, 204, 0.1); color: var(--primary-mid); margin-bottom: 0;">
                 <i class="fas fa-box-open"></i>
             </div>
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title">Top Product</div>
-                <div class="kpi-value" id="ov-top-product" style="font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Product">--</div>
-                <div class="kpi-subtitle">Best Seller</div>
+            <div class="kpi-content" style="min-width: 0; width: 100%;">
+                <div class="kpi-title" id="ov-driver-primary-title">Top Product by Rev</div>
+                <div class="kpi-value" id="ov-driver-product-sales" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="ov-driver-product-sales-sub" style="font-size: 0.65rem; margin-top: 2px;"></div>
             </div>
         </div>
-
-        <!-- Top Entity -->
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background-color: rgba(85, 142, 213, 0.1); color: var(--accent-2);">
-                <i class="fas fa-building"></i>
+        <div class="kpi-card kpi-card-mini" style="border-left: 4px solid var(--success); align-items: center;">
+            <div class="kpi-icon success" style="margin-bottom: 0;">
+                <i class="fas fa-hand-holding-usd"></i>
             </div>
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title">Top Entity</div>
-                <div class="kpi-value" id="ov-top-entity" style="font-size: 1.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Entity">--</div>
-                <div class="kpi-subtitle">Highest Contributor</div>
+            <div class="kpi-content" style="min-width: 0; width: 100%;">
+                <div class="kpi-title" id="ov-driver-secondary-title">Top Product by Profit</div>
+                <div class="kpi-value" id="ov-driver-product-profit" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--success);">--</div>
+                <div class="kpi-subtitle" id="ov-driver-product-profit-sub" style="font-size: 0.65rem; margin-top: 2px;"></div>
+            </div>
+        </div>
+        <div class="kpi-card kpi-card-mini" style="border-left: 4px solid var(--accent-1); align-items: center;">
+            <div class="kpi-icon" style="background-color: rgba(69, 114, 196, 0.1); color: var(--accent-1); margin-bottom: 0;">
+                <i class="fas fa-map-marker-alt"></i>
+            </div>
+            <div class="kpi-content" style="min-width: 0; width: 100%;">
+                <div class="kpi-title" id="ov-driver-location-title">Top Ranked Location</div>
+                <div class="kpi-value" id="ov-driver-location" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="ov-driver-location-sub" style="font-size: 0.65rem; margin-top: 2px;"></div>
+            </div>
+        </div>
+        <div class="kpi-card kpi-card-mini" style="border-left: 4px solid var(--primary-light); align-items: center;">
+            <div class="kpi-icon" style="background-color: rgba(0, 153, 204, 0.1); color: var(--primary-light); margin-bottom: 0;">
+                <i class="fas fa-user-tie"></i>
+            </div>
+            <div class="kpi-content" style="min-width: 0; width: 100%;">
+                <div class="kpi-title" id="ov-driver-contributor-title">Highest Contributor</div>
+                <div class="kpi-value" id="ov-driver-seller" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="ov-driver-seller-sub" style="font-size: 0.65rem; margin-top: 2px;"></div>
             </div>
         </div>
     </div>
 
-    <!-- SECTION: Quick Insights -->
-    <h3 style="font-size: 1.05rem; color: var(--primary-mid); margin-bottom: 15px; border-bottom: 2px solid var(--border-color); padding-bottom: 8px; margin-top: 10px;">
-        <i class="fas fa-lightbulb" style="margin-right: 8px;"></i>Quick Insights
+    <h3 class="overview-section-title">
+        <i class="fas fa-exchange-alt" style="margin-right: 8px; color: var(--primary-mid);"></i>Transactions
     </h3>
-    <div class="charts-grid cols-1" style="margin-bottom: 10px;">
-        <div class="chart-card" style="padding: 15px 20px;">
-            <ul id="ov-insights-list" style="list-style-type: none; padding: 0; margin: 0;">
-                <!-- Insights will be injected here by JS -->
-                <li style="padding: 10px 0; display: flex; align-items: flex-start; gap: 12px; color: var(--text-main); font-size: 0.95rem;">
-                    <i class="fas fa-info-circle" style="color: var(--primary-light); margin-top: 3px;"></i>
-                    <span id="ov-insight-text">Loading automated insights...</span>
+    <div class="overview-transactions-caption-row">
+        <span id="ov-transactions-caption" class="badge badge-primary" style="font-size: 0.65rem;">Loading period...</span>
+    </div>
+    <div id="ov-transactions-grid" class="overview-transactions-grid" style="margin-bottom: 25px;"></div>
+
+    <h3 class="overview-section-title">
+        <i class="fas fa-search-dollar" style="margin-right: 8px; color: var(--primary-mid);"></i>Executive Insights
+    </h3>
+    <div class="charts-grid overview-insights-grid" style="margin-bottom: 10px;">
+
+        <div class="chart-card" style="padding: 15px 20px; border-left: 4px solid var(--success);">
+            <h4 style="color: var(--success); margin-bottom: 8px; font-size: 0.95rem;"><i class="fas fa-arrow-trend-up" style="margin-right: 8px;"></i>Opportunities & Strengths</h4>
+            <p id="ov-opp-context" class="overview-insight-context">Loading context...</p>
+            <ul id="ov-opportunities-list" style="list-style-type: none; padding: 0; margin: 0;">
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-check" style="color: var(--success); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-opp-1">Loading...</span>
+                </li>
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-check" style="color: var(--success); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-opp-2">Loading...</span>
+                </li>
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-check" style="color: var(--success); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-opp-3">Loading...</span>
                 </li>
             </ul>
         </div>
+
+        <div class="chart-card" style="padding: 15px 20px; border-left: 4px solid var(--warning);">
+            <h4 style="color: var(--warning); margin-bottom: 8px; font-size: 0.95rem;"><i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i>Risks & Alerts</h4>
+            <p id="ov-risk-context" class="overview-insight-context">Loading context...</p>
+            <ul id="ov-risks-list" style="list-style-type: none; padding: 0; margin: 0;">
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-circle-exclamation" style="color: var(--warning); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-risk-1">Loading...</span>
+                </li>
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-circle-exclamation" style="color: var(--warning); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-risk-2">Loading...</span>
+                </li>
+                <li style="padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; color: var(--text-main); font-size: 0.9rem;">
+                    <i class="fas fa-circle-exclamation" style="color: var(--warning); margin-top: 3px; font-size: 0.8rem;"></i>
+                    <span id="ov-risk-3">Loading...</span>
+                </li>
+            </ul>
+        </div>
+
     </div>
 
 </div>
