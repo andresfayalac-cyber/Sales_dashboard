@@ -5,10 +5,15 @@
  */
 
 const appState = {
-    data: { overview: null, monthly: null, entities: null, productsLocations: null },
+    data: { overview: null, monthly: null, timeSeries: null, entities: null, productsLocations: null, productsLocationsStrategy: null },
     charts: {}, 
     currentView: 'view-overview',
-    globalTimeFilter: '1', // 'all', '12', '6', '3', '1'
+    legacyTimeFilter: '1',
+    monthlyTimeFilter: '12m',
+    productMarketMonthFilter: '',
+    productMarketMonthOptionsSignature: '',
+    globalGranularity: 'monthly',
+    globalComparison: 'prior_year',
     colors: {
         primaryDark: '#021640', primaryMid: '#0066CC', primaryLight: '#0099CC',
         accent1: '#4572C4', accent2: '#558ED5', success: '#1fa971',
@@ -48,22 +53,22 @@ const formatPercent = (value, decimals = 1) => {
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
+    const date = toDateOrNull(dateString);
+    if (!date || isNaN(date.getTime())) return dateString;
     return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
 };
 
 const formatMonth = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
+    const date = toDateOrNull(dateString);
+    if (!date || isNaN(date.getTime())) return dateString;
     return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short' }).format(date);
 };
 
 const formatMonthShort = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
+    const date = toDateOrNull(dateString);
+    if (!date || isNaN(date.getTime())) return dateString;
     return new Intl.DateTimeFormat('en-US', { year: '2-digit', month: 'short' }).format(date);
 };
 
@@ -74,6 +79,52 @@ const OVERVIEW_TIME_LIMIT = {
     cutoffMonthLabel: 'Feb 2026'
 };
 
+const TARGET_TIME_LIMIT = {
+    startMonth: new Date('2024-01-01T00:00:00'),
+    startLabel: 'Jan 2024',
+    cutoffLabel: OVERVIEW_TIME_LIMIT.cutoffMonthLabel
+};
+
+const TIME_FILTER_LABELS = {
+    ytd: 'YTD',
+    '6m': 'Last 6 Months',
+    '12m': 'Last 12 Months',
+    '24m': 'Last 24 Months',
+    '12': 'Last 12 Months',
+    '6': 'Last 6 Months',
+    '3': 'Last 3 Months',
+    '1': 'Last 1 Month',
+    all: 'All History'
+};
+
+const LEGACY_TIME_FILTER_OPTIONS = [
+    { value: 'all', label: 'All Time (through Feb 2026)' },
+    { value: '12', label: 'Last 12 Months' },
+    { value: '6', label: 'Last 6 Months' },
+    { value: '3', label: 'Last 3 Months' },
+    { value: '1', label: 'Last 1 Month' }
+];
+
+const MONTHLY_TIME_FILTER_OPTIONS = [
+    { value: 'ytd', label: 'YTD' },
+    { value: '6m', label: 'Last 6 Months' },
+    { value: '12m', label: 'Last 12 Months' },
+    { value: '24m', label: 'Last 24 Months' },
+    { value: 'all', label: 'All History (through Feb 2026)' }
+];
+
+const GRANULARITY_LABELS = {
+    monthly: 'Monthly',
+    weekly: 'Weekly',
+    daily: 'Daily'
+};
+
+const COMPARISON_LABELS = {
+    prior_year: 'Actual vs Prior Year',
+    target: 'Actual vs Target',
+    actual_only: 'Actual only'
+};
+
 const toDateOrNull = (value) => {
     if (!value) return null;
     const cleanValue = typeof value === 'string' ? value.replace('Z', '') : value;
@@ -81,8 +132,271 @@ const toDateOrNull = (value) => {
     return isNaN(date.getTime()) ? null : date;
 };
 
+const hasNumericValue = (value) => value !== null && value !== undefined && !isNaN(value);
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const endOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
 const monthStartFromDate = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const monthKeyFromDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+const dayKeyFromDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const weekStartFromDate = (date) => {
+    const base = startOfDay(date);
+    const offset = (base.getDay() + 6) % 7;
+    base.setDate(base.getDate() - offset);
+    return base;
+};
+
+const getGranularityPeriodStart = (date, granularity = 'monthly') => {
+    if (granularity === 'daily') return startOfDay(date);
+    if (granularity === 'weekly') return weekStartFromDate(date);
+    return monthStartFromDate(date);
+};
+
+const getGranularityPeriodKey = (date, granularity = 'monthly') => {
+    const periodStart = getGranularityPeriodStart(date, granularity);
+    if (granularity === 'daily') return dayKeyFromDate(periodStart);
+    if (granularity === 'weekly') return `W-${dayKeyFromDate(periodStart)}`;
+    return monthKeyFromDate(periodStart);
+};
+
+const normalizeTimeSeriesRows = (rows = []) => {
+    return rows
+        .map(row => {
+            const rawDate = toDateOrNull(row.date || row.day || row.period_start || row.month_start);
+            if (!rawDate) return null;
+            const dayDate = startOfDay(rawDate);
+            if (dayDate > OVERVIEW_TIME_LIMIT.cutoffDate) return null;
+
+            return {
+                ...row,
+                date: dayDate,
+                dayKey: dayKeyFromDate(dayDate),
+                monthDate: monthStartFromDate(dayDate),
+                sales: Number(row.sales) || 0,
+                cost: Number(row.cost) || 0,
+                expenses: Number(row.expenses) || 0,
+                margin: Number(row.margin) || 0,
+                profit: Number(row.profit) || 0,
+                tx_count: Number(row.tx_count) || 0,
+                target_sales: hasNumericValue(row.target_sales) ? Number(row.target_sales) : null,
+                has_target_data: !!row.has_target_data || hasNumericValue(row.target_sales)
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.date - b.date);
+};
+
+const getNormalizedTimeSeriesRows = () => {
+    return normalizeTimeSeriesRows((appState.data.timeSeries && appState.data.timeSeries.daily_data) || []);
+};
+
+const aggregateRowsByGranularity = (rows = [], granularity = 'monthly') => {
+    const map = new Map();
+
+    rows.forEach(row => {
+        const periodStart = getGranularityPeriodStart(row.date, granularity);
+        const periodKey = getGranularityPeriodKey(periodStart, granularity);
+
+        if (!map.has(periodKey)) {
+            map.set(periodKey, {
+                periodKey,
+                periodStart,
+                sales: 0,
+                cost: 0,
+                expenses: 0,
+                margin: 0,
+                profit: 0,
+                tx_count: 0,
+                target_sales: null,
+                has_target_data: false
+            });
+        }
+
+        const item = map.get(periodKey);
+        item.sales += Number(row.sales) || 0;
+        item.cost += Number(row.cost) || 0;
+        item.expenses += Number(row.expenses) || 0;
+        item.margin += Number(row.margin) || 0;
+        item.profit += Number(row.profit) || 0;
+        item.tx_count += Number(row.tx_count) || 0;
+
+        if (hasNumericValue(row.target_sales)) {
+            if (item.target_sales === null) item.target_sales = 0;
+            item.target_sales += Number(row.target_sales) || 0;
+            item.has_target_data = true;
+        }
+    });
+
+    return Array.from(map.values())
+        .sort((a, b) => a.periodStart - b.periodStart)
+        .map(item => ({
+            ...item,
+            avg_margin_pct: item.sales > 0 ? item.margin / item.sales : 0,
+            avg_profit_pct: item.sales > 0 ? item.profit / item.sales : 0,
+            avg_ticket: item.tx_count > 0 ? item.sales / item.tx_count : 0
+        }));
+};
+
+const shiftDateByOneYear = (date, granularity = 'monthly') => {
+    const shifted = new Date(date.getTime());
+    shifted.setFullYear(shifted.getFullYear() - 1);
+    return getGranularityPeriodStart(shifted, granularity);
+};
+
+const buildComparisonSeries = (currentSeries = [], allSeries = [], mode = 'actual_only', metric = 'sales', granularity = 'monthly') => {
+    if (mode === 'actual_only') return [];
+
+    if (mode === 'target') {
+        return [{
+            name: 'Target',
+            data: currentSeries.map(row => hasNumericValue(row.target_sales) ? Number(row.target_sales) : null),
+            type: 'line',
+            isComparison: true,
+            hasPartialData: currentSeries.some(row => !hasNumericValue(row.target_sales))
+        }];
+    }
+
+    const historyMap = new Map(allSeries.map(row => [row.periodKey, row]));
+    return [{
+        name: 'Prior Year',
+        data: currentSeries.map(row => {
+            const priorKey = getGranularityPeriodKey(shiftDateByOneYear(row.periodStart, granularity), granularity);
+            const prior = historyMap.get(priorKey);
+            return prior ? Number(prior[metric]) || 0 : null;
+        }),
+        type: 'line',
+        isComparison: true,
+        hasPartialData: true
+    }];
+};
+
+const getSelectedWindowBounds = (latestDate, filterValue, allRows = []) => {
+    const safeLatest = startOfDay(latestDate);
+    const normalizedFilter = String(filterValue || '').toLowerCase();
+
+    if (normalizedFilter === 'all') {
+        const firstDataDate = allRows.length ? startOfDay(allRows[0].monthDate || allRows[0].date || safeLatest) : safeLatest;
+        return { startDate: firstDataDate, label: TIME_FILTER_LABELS.all, isAllTime: true };
+    }
+
+    if (normalizedFilter === 'ytd') {
+        return {
+            startDate: new Date(safeLatest.getFullYear(), 0, 1),
+            label: `${TIME_FILTER_LABELS.ytd} ${safeLatest.getFullYear()}`,
+            isAllTime: false
+        };
+    }
+
+    let monthsRequested = 12;
+    if (normalizedFilter === '24m') monthsRequested = 24;
+    else if (normalizedFilter === '12m' || normalizedFilter === '12') monthsRequested = 12;
+    else if (normalizedFilter === '6m' || normalizedFilter === '6') monthsRequested = 6;
+    else if (normalizedFilter === '3') monthsRequested = 3;
+    else if (normalizedFilter === '1') monthsRequested = 1;
+
+    const label = TIME_FILTER_LABELS[normalizedFilter] || TIME_FILTER_LABELS['12m'];
+    return {
+        startDate: new Date(safeLatest.getFullYear(), safeLatest.getMonth() - (monthsRequested - 1), 1),
+        label,
+        isAllTime: false
+    };
+};
+
+const getAllowedGranularityOptions = (rangeDays = 0, hasDailyData = false) => {
+    const options = ['monthly'];
+    if (hasDailyData && rangeDays <= 366) options.push('weekly');
+    if (hasDailyData && rangeDays <= 90) options.push('daily');
+    return options;
+};
+
+const setGlobalFilterWarning = (message = '') => {
+    const warningEl = document.getElementById('global-filter-warning');
+    if (!warningEl) return;
+
+    if (message) {
+        warningEl.innerText = message;
+        warningEl.style.display = 'block';
+    } else {
+        warningEl.innerText = '';
+        warningEl.style.display = 'none';
+    }
+};
+
+const getFilterModeForView = (viewId = appState.currentView) => {
+    return viewId === 'view-monthly' ? 'monthly' : 'legacy';
+};
+
+const renderTimeFilterOptions = (mode = 'legacy') => {
+    const timeSelect = document.getElementById('global-time-filter');
+    if (!timeSelect) return;
+
+    const options = mode === 'monthly' ? MONTHLY_TIME_FILTER_OPTIONS : LEGACY_TIME_FILTER_OPTIONS;
+    const selectedValue = mode === 'monthly' ? appState.monthlyTimeFilter : appState.legacyTimeFilter;
+
+    timeSelect.innerHTML = '';
+    options.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.value;
+        option.innerText = item.label;
+        timeSelect.appendChild(option);
+    });
+
+    const hasSelected = options.some(item => item.value === selectedValue);
+    timeSelect.value = hasSelected ? selectedValue : options[0].value;
+
+    if (mode === 'monthly') appState.monthlyTimeFilter = timeSelect.value;
+    else appState.legacyTimeFilter = timeSelect.value;
+};
+
+const syncGlobalFilterUIForView = (viewId = appState.currentView) => {
+    const filterContainer = document.getElementById('global-filter-container');
+    const productMarketFilterContainer = document.getElementById('pl-global-filter-container');
+    const timeLabel = document.querySelector('label[for="global-time-filter"]');
+    const granularityLabel = document.querySelector('label[for="global-granularity-filter"]');
+    const granularitySelect = document.getElementById('global-granularity-filter');
+    const comparisonLabel = document.querySelector('label[for="global-comparison-filter"]');
+    const comparisonSelect = document.getElementById('global-comparison-filter');
+
+    if (!filterContainer) return;
+
+    const isGlobalSupportedView = viewId === 'view-overview' || viewId === 'view-monthly' || viewId === 'view-entities';
+    const isProductMarketView = viewId === 'view-products-locations';
+
+    filterContainer.style.display = isGlobalSupportedView ? 'block' : 'none';
+    if (productMarketFilterContainer) {
+        productMarketFilterContainer.style.display = isProductMarketView ? 'block' : 'none';
+    }
+
+    if (!isGlobalSupportedView) {
+        setGlobalFilterWarning('');
+        return;
+    }
+
+    const mode = getFilterModeForView(viewId);
+    renderTimeFilterOptions(mode);
+
+    if (timeLabel) {
+        timeLabel.innerText = mode === 'monthly' ? 'Window' : 'Time Window';
+        timeLabel.style.display = '';
+    }
+
+    const showMonthlySeriesControls = mode === 'monthly';
+    const displayValue = showMonthlySeriesControls ? '' : 'none';
+
+    if (granularityLabel) granularityLabel.style.display = displayValue;
+    if (granularitySelect) granularitySelect.style.display = displayValue;
+    if (comparisonLabel) comparisonLabel.style.display = displayValue;
+    if (comparisonSelect) comparisonSelect.style.display = displayValue;
+
+    if (showMonthlySeriesControls) {
+        syncGranularityControl(getCurrentOverviewContext());
+    } else {
+        setGlobalFilterWarning('');
+    }
+};
 
 const normalizeMonthlyRows = (rows = []) => {
     return rows
@@ -99,6 +413,10 @@ const normalizeMonthlyRows = (rows = []) => {
                 margin: Number(row.margin) || 0,
                 profit: Number(row.profit) || 0,
                 tx_count: Number(row.tx_count) || 0,
+                target_sales: hasNumericValue(row.target_sales) ? Number(row.target_sales) : null,
+                has_target_data: !!row.has_target_data || hasNumericValue(row.target_sales),
+                target_profit: hasNumericValue(row.target_profit) ? Number(row.target_profit) : null,
+                has_profit_target_data: !!row.has_profit_target_data || hasNumericValue(row.target_profit),
                 monthDate,
                 monthKey: monthKeyFromDate(monthDate)
             };
@@ -136,11 +454,12 @@ const formatPeriodLabel = (rows = []) => {
     return `${formatMonth(rows[0].month_start)} - ${formatMonth(rows[rows.length - 1].month_start)}`;
 };
 
-const getOverviewTimeContext = (monthlyRows = [], filterValue = appState.globalTimeFilter) => {
+const getOverviewTimeContext = (monthlyRows = [], filterValue = appState.monthlyTimeFilter) => {
     const allRows = normalizeMonthlyRows(monthlyRows);
 
     if (!allRows.length) {
         const emptySummary = summarizeMonthlyRows([]);
+        const fallbackStart = startOfDay(OVERVIEW_TIME_LIMIT.cutoffMonthStart);
         return {
             allRows: [],
             currentRows: [],
@@ -152,6 +471,10 @@ const getOverviewTimeContext = (monthlyRows = [], filterValue = appState.globalT
             previousLabel: 'N/A',
             latestMonthDate: OVERVIEW_TIME_LIMIT.cutoffMonthStart,
             latestMonthLabel: OVERVIEW_TIME_LIMIT.cutoffMonthLabel,
+            windowStartDate: fallbackStart,
+            windowEndDate: endOfDay(OVERVIEW_TIME_LIMIT.cutoffDate),
+            rangeDays: 1,
+            timeFilterLabel: TIME_FILTER_LABELS[filterValue] || TIME_FILTER_LABELS['12m'],
             currentSummary: emptySummary,
             previousSummary: emptySummary
         };
@@ -160,42 +483,39 @@ const getOverviewTimeContext = (monthlyRows = [], filterValue = appState.globalT
     const latestMonthDate = allRows[allRows.length - 1].monthDate;
     const latestMonthLabel = formatMonth(allRows[allRows.length - 1].month_start);
 
-    if (filterValue === 'all') {
-        const currentSummary = summarizeMonthlyRows(allRows);
-        return {
-            allRows,
-            currentRows: allRows,
-            previousRows: [],
-            monthKeySet: new Set(allRows.map(row => row.monthKey)),
-            isAllTime: true,
-            comparisonAvailable: false,
-            periodLabel: formatPeriodLabel(allRows),
-            previousLabel: 'N/A',
-            latestMonthDate,
-            latestMonthLabel,
-            currentSummary,
-            previousSummary: summarizeMonthlyRows([])
-        };
+    const bounds = getSelectedWindowBounds(latestMonthDate, filterValue, allRows);
+    const windowStartDate = startOfDay(bounds.startDate);
+    const windowEndDate = endOfDay(OVERVIEW_TIME_LIMIT.cutoffDate);
+
+    const currentRows = allRows.filter(row => row.monthDate >= windowStartDate && row.monthDate <= latestMonthDate);
+    const isAllTime = bounds.isAllTime;
+
+    let previousRows = [];
+    if (!isAllTime && currentRows.length > 0) {
+        const currentStart = currentRows[0].monthDate;
+        const previousEnd = new Date(currentStart.getFullYear(), currentStart.getMonth() - 1, 1);
+        const previousStart = new Date(previousEnd.getFullYear(), previousEnd.getMonth() - currentRows.length + 1, 1);
+        previousRows = allRows.filter(row => row.monthDate >= previousStart && row.monthDate <= previousEnd);
     }
 
-    const monthsRequested = Math.max(1, parseInt(filterValue, 10) || 1);
-    const endIndex = allRows.length - 1;
-    const startIndex = Math.max(0, endIndex - monthsRequested + 1);
-    const currentRows = allRows.slice(startIndex, endIndex + 1);
-    const previousRows = startIndex > 0 ? allRows.slice(Math.max(0, startIndex - currentRows.length), startIndex) : [];
-    const comparisonAvailable = previousRows.length === currentRows.length && previousRows.length > 0;
+    const comparisonAvailable = !isAllTime && previousRows.length === currentRows.length && previousRows.length > 0;
+    const rangeDays = Math.max(1, Math.floor((windowEndDate - windowStartDate) / MS_PER_DAY) + 1);
 
     return {
         allRows,
         currentRows,
         previousRows,
         monthKeySet: new Set(currentRows.map(row => row.monthKey)),
-        isAllTime: false,
+        isAllTime,
         comparisonAvailable,
         periodLabel: formatPeriodLabel(currentRows),
         previousLabel: formatPeriodLabel(previousRows),
         latestMonthDate,
         latestMonthLabel,
+        windowStartDate,
+        windowEndDate,
+        rangeDays,
+        timeFilterLabel: bounds.label,
         currentSummary: summarizeMonthlyRows(currentRows),
         previousSummary: summarizeMonthlyRows(previousRows)
     };
@@ -204,6 +524,353 @@ const getOverviewTimeContext = (monthlyRows = [], filterValue = appState.globalT
 const getLatestReferenceMonth = () => {
     const overviewRows = normalizeMonthlyRows((appState.data.overview && appState.data.overview.monthly_data) || []);
     return overviewRows.length ? overviewRows[overviewRows.length - 1].monthDate : OVERVIEW_TIME_LIMIT.cutoffMonthStart;
+};
+
+const getCurrentOverviewContext = () => {
+    return getOverviewTimeContext((appState.data.overview && appState.data.overview.monthly_data) || [], appState.monthlyTimeFilter);
+};
+
+const getEffectiveGranularityMeta = (context = getCurrentOverviewContext()) => {
+    const hasDailyData = getNormalizedTimeSeriesRows().length > 0;
+    const allowedGranularities = getAllowedGranularityOptions(context.rangeDays || 0, hasDailyData);
+    const granularity = allowedGranularities.includes(appState.globalGranularity) ? appState.globalGranularity : 'monthly';
+    return { granularity, allowedGranularities, hasDailyData };
+};
+
+const syncGranularityControl = (context = getCurrentOverviewContext()) => {
+    const granularitySelect = document.getElementById('global-granularity-filter');
+    if (!granularitySelect) return;
+
+    if (getFilterModeForView(appState.currentView) !== 'monthly') {
+        setGlobalFilterWarning('');
+        return;
+    }
+
+    const meta = getEffectiveGranularityMeta(context);
+    let allowedGranularities = meta.allowedGranularities.slice();
+
+    if (appState.globalComparison === 'target') {
+        allowedGranularities = ['monthly'];
+        setGlobalFilterWarning('Target data is available only at monthly granularity. Weekly and daily are disabled for Actual vs Target.');
+    } else {
+        setGlobalFilterWarning('');
+    }
+
+    granularitySelect.innerHTML = '';
+
+    allowedGranularities.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.innerText = GRANULARITY_LABELS[value] || value;
+        granularitySelect.appendChild(option);
+    });
+
+    if (!allowedGranularities.includes(appState.globalGranularity)) {
+        appState.globalGranularity = allowedGranularities[0] || meta.granularity;
+    }
+
+    granularitySelect.value = appState.globalGranularity;
+    granularitySelect.disabled = allowedGranularities.length === 1;
+};
+
+const buildSeriesRowFromMonthly = (row) => ({
+    periodKey: row.monthKey,
+    periodStart: row.monthDate,
+    sales: Number(row.sales) || 0,
+    cost: Number(row.cost) || 0,
+    expenses: Number(row.expenses) || 0,
+    margin: Number(row.margin) || 0,
+    profit: Number(row.profit) || 0,
+    tx_count: Number(row.tx_count) || 0,
+    target_sales: hasNumericValue(row.target_sales) ? Number(row.target_sales) : null,
+    has_target_data: !!row.has_target_data || hasNumericValue(row.target_sales),
+    target_profit: hasNumericValue(row.target_profit) ? Number(row.target_profit) : null,
+    has_profit_target_data: !!row.has_profit_target_data || hasNumericValue(row.target_profit),
+    avg_margin_pct: Number(row.sales) > 0 ? Number(row.margin) / Number(row.sales) : 0,
+    avg_profit_pct: Number(row.sales) > 0 ? Number(row.profit) / Number(row.sales) : 0,
+    avg_ticket: Number(row.tx_count) > 0 ? Number(row.sales) / Number(row.tx_count) : 0
+});
+
+const getWindowedGranularSeries = (context, requestedGranularity = appState.globalGranularity) => {
+    const dailyRows = getNormalizedTimeSeriesRows();
+    const hasDailyData = dailyRows.length > 0;
+    const allowedGranularities = getAllowedGranularityOptions(context.rangeDays || 0, hasDailyData);
+    const rawGranularity = allowedGranularities.includes(requestedGranularity) ? requestedGranularity : 'monthly';
+    const granularity = appState.globalComparison === 'target' ? 'monthly' : rawGranularity;
+
+    const buildMonthlySeriesWithTargets = () => {
+        const monthlyAll = context.allRows.map(buildSeriesRowFromMonthly);
+        const monthlyCurrent = context.currentRows.map(buildSeriesRowFromMonthly);
+
+        if (!hasDailyData) {
+            return { allSeries: monthlyAll, currentSeries: monthlyCurrent };
+        }
+
+        const monthlyTargetMap = new Map(
+            aggregateRowsByGranularity(dailyRows, 'monthly').map(row => [row.periodKey, row])
+        );
+
+        const attachTarget = (series = []) => series.map(row => {
+            const targetRow = monthlyTargetMap.get(row.periodKey);
+            const rowTarget = hasNumericValue(row.target_sales) ? Number(row.target_sales) : null;
+            const mapTarget = targetRow && hasNumericValue(targetRow.target_sales) ? Number(targetRow.target_sales) : null;
+            const resolvedTarget = rowTarget !== null ? rowTarget : mapTarget;
+            return {
+                ...row,
+                target_sales: resolvedTarget,
+                has_target_data: resolvedTarget !== null,
+                target_profit: hasNumericValue(row.target_profit) ? Number(row.target_profit) : null,
+                has_profit_target_data: !!row.has_profit_target_data || hasNumericValue(row.target_profit)
+            };
+        });
+
+        return {
+            allSeries: attachTarget(monthlyAll),
+            currentSeries: attachTarget(monthlyCurrent)
+        };
+    };
+
+    if (!hasDailyData || granularity === 'monthly') {
+        const monthlySeries = buildMonthlySeriesWithTargets();
+        return {
+            granularity: 'monthly',
+            hasDailyData,
+            allowedGranularities,
+            currentSeries: monthlySeries.currentSeries,
+            allSeries: monthlySeries.allSeries
+        };
+    }
+
+    const startDate = startOfDay(context.windowStartDate || OVERVIEW_TIME_LIMIT.cutoffMonthStart);
+    const endDate = endOfDay(context.windowEndDate || OVERVIEW_TIME_LIMIT.cutoffDate);
+    const currentRows = dailyRows.filter(row => row.date >= startDate && row.date <= endDate);
+
+    return {
+        granularity,
+        hasDailyData: true,
+        allowedGranularities,
+        currentSeries: aggregateRowsByGranularity(currentRows, granularity),
+        allSeries: aggregateRowsByGranularity(dailyRows, granularity)
+    };
+};
+
+const formatPeriodByGranularity = (periodStart, granularity = 'monthly', useShort = false) => {
+    if (!(periodStart instanceof Date)) return 'N/A';
+
+    if (granularity === 'daily') {
+        return new Intl.DateTimeFormat('en-US', { month: useShort ? 'short' : 'short', day: 'numeric' }).format(periodStart);
+    }
+
+    if (granularity === 'weekly') {
+        const weekEnd = new Date(periodStart.getFullYear(), periodStart.getMonth(), periodStart.getDate() + 6);
+        const startText = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(periodStart);
+        const endText = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(weekEnd);
+        return useShort ? `${startText}` : `${startText} - ${endText}`;
+    }
+
+    return useShort
+        ? new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit' }).format(periodStart)
+        : new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(periodStart);
+};
+
+const buildComparisonDescription = (mode = appState.globalComparison, granularity = appState.globalGranularity, partialTarget = false) => {
+    if (mode === 'target') {
+        return partialTarget
+            ? `Comparison: ${COMPARISON_LABELS.target} (rendered only where target exists)`
+            : `Comparison: ${COMPARISON_LABELS.target}`;
+    }
+
+    if (mode === 'prior_year') {
+        return `Comparison: ${COMPARISON_LABELS.prior_year}`;
+    }
+
+    return `Comparison: ${COMPARISON_LABELS.actual_only}`;
+};
+
+const getRangeLabelForSeries = (seriesRows = [], granularity = 'monthly') => {
+    if (!seriesRows.length) return 'No active range';
+    const first = seriesRows[0].periodStart;
+    const last = seriesRows[seriesRows.length - 1].periodStart;
+    if (!(first instanceof Date) || !(last instanceof Date)) return 'No active range';
+
+    const firstLabel = formatPeriodByGranularity(first, granularity);
+    const lastLabel = formatPeriodByGranularity(last, granularity);
+    return first.getTime() === last.getTime() ? firstLabel : `${firstLabel} to ${lastLabel}`;
+};
+
+const getGranularityPointLabel = (granularity = 'monthly') => {
+    if (granularity === 'daily') return 'daily points';
+    if (granularity === 'weekly') return 'weekly points';
+    return 'monthly points';
+};
+
+const formatSignedPercentValue = (value, decimals = 1) => {
+    if (!hasNumericValue(value)) return 'n/a';
+    const numeric = Number(value) || 0;
+    return `${numeric > 0 ? '+' : ''}${numeric.toFixed(decimals)}%`;
+};
+
+const formatSignedCurrencyValue = (value, decimals = 0) => {
+    if (!hasNumericValue(value)) return 'n/a';
+    const numeric = Number(value) || 0;
+    return `${numeric > 0 ? '+' : ''}${formatCurrency(numeric, decimals)}`;
+};
+
+const buildTargetWindowMeta = (monthlyRows = [], actualField = 'sales', targetField = 'target_sales') => {
+    let targetTotal = 0;
+    let actualForTarget = 0;
+    let pointsWithTarget = 0;
+
+    monthlyRows.forEach(row => {
+        const targetValue = hasNumericValue(row[targetField]) ? Number(row[targetField]) : null;
+        if (targetValue === null) return;
+        pointsWithTarget += 1;
+        targetTotal += targetValue;
+        actualForTarget += Number(row[actualField]) || 0;
+    });
+
+    const totalPoints = monthlyRows.length;
+    const hasTarget = pointsWithTarget > 0 && targetTotal > 0;
+    const attainment = hasTarget ? (actualForTarget / targetTotal) : null;
+    const variance = hasTarget ? (actualForTarget - targetTotal) : null;
+
+    return {
+        hasTarget,
+        targetTotal,
+        actualForTarget,
+        pointsWithTarget,
+        totalPoints,
+        attainment,
+        variance,
+        fullCoverage: totalPoints > 0 && pointsWithTarget === totalPoints
+    };
+};
+
+const buildPriorYearMonthlyMeta = (currentRows = [], allRows = []) => {
+    const allMap = new Map(allRows.map(row => [row.monthKey, row]));
+    const priorRows = [];
+
+    currentRows.forEach(row => {
+        if (!row.monthDate) return;
+        const priorDate = new Date(row.monthDate.getTime());
+        priorDate.setFullYear(priorDate.getFullYear() - 1);
+        const priorKey = monthKeyFromDate(priorDate);
+        const priorRow = allMap.get(priorKey);
+        if (priorRow) priorRows.push(priorRow);
+    });
+
+    const totals = summarizeMonthlyRows(priorRows);
+    const matchedMonths = priorRows.length;
+    const totalMonths = currentRows.length;
+
+    return {
+        available: matchedMonths > 0,
+        fullCoverage: totalMonths > 0 && matchedMonths === totalMonths,
+        matchedMonths,
+        totalMonths,
+        totals
+    };
+};
+
+const buildWeekdayRankingMeta = (context, granularity = 'monthly') => {
+    const allDailyRows = getNormalizedTimeSeriesRows();
+    if (!allDailyRows.length) {
+        return { available: false, reason: 'Daily dataset is not available for weekday ranking.' };
+    }
+
+    const allowDailyInsights = granularity === 'daily' || granularity === 'weekly' || (context.rangeDays || 0) <= 366;
+    if (!allowDailyInsights) {
+        return { available: false, reason: 'Weekday ranking is shown for windows up to 12 months, or when daily/weekly granularity is selected.' };
+    }
+
+    const startDate = startOfDay(context.windowStartDate || OVERVIEW_TIME_LIMIT.cutoffMonthStart);
+    const endDate = endOfDay(context.windowEndDate || OVERVIEW_TIME_LIMIT.cutoffDate);
+    const windowRows = allDailyRows.filter(row => row.date >= startDate && row.date <= endDate);
+
+    if (!windowRows.length) {
+        return { available: false, reason: `No daily rows found inside ${context.timeFilterLabel}.` };
+    }
+
+    const weekdayLabels = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const weekdayStats = new Map();
+
+    windowRows.forEach(row => {
+        const dayIndex = row.date.getDay();
+        if (!weekdayStats.has(dayIndex)) {
+            weekdayStats.set(dayIndex, { dayIndex, days: 0, sales: 0, profit: 0 });
+        }
+        const item = weekdayStats.get(dayIndex);
+        item.days += 1;
+        item.sales += Number(row.sales) || 0;
+        item.profit += Number(row.profit) || 0;
+    });
+
+    const ranked = Array.from(weekdayStats.values())
+        .map(item => ({
+            ...item,
+            avgSales: item.days > 0 ? item.sales / item.days : 0,
+            avgProfit: item.days > 0 ? item.profit / item.days : 0,
+            label: weekdayLabels[item.dayIndex] || 'Unknown'
+        }))
+        .filter(item => item.days > 0)
+        .sort((a, b) => b.avgSales - a.avgSales);
+
+    if (!ranked.length) {
+        return { available: false, reason: `No weekday pattern can be computed for ${context.timeFilterLabel}.` };
+    }
+
+    return {
+        available: true,
+        best: ranked[0],
+        worst: ranked[ranked.length - 1],
+        sampleDays: windowRows.length
+    };
+};
+
+const buildMetricStoryChunk = (metricLabel, currentValue, targetMeta, priorValue, priorAvailable) => {
+    const metricTitle = metricLabel === 'profit' ? 'Profit' : 'Sales';
+    const comparisons = [];
+
+    if (priorAvailable && hasNumericValue(priorValue)) {
+        const yoyDelta = calculatePercentDelta(currentValue, priorValue);
+        if (yoyDelta !== null) {
+            comparisons.push(`${formatSignedPercentValue(yoyDelta, 1)} vs PY`);
+        }
+    }
+
+    if (targetMeta && targetMeta.hasTarget && hasNumericValue(targetMeta.attainment)) {
+        comparisons.push(`${formatSignedPercentValue((targetMeta.attainment - 1) * 100, 1)} vs target`);
+    }
+
+    if (!comparisons.length) {
+        return `${metricTitle} ${formatCurrency(currentValue, 0)} (no baseline)`;
+    }
+
+    return `${metricTitle} ${formatCurrency(currentValue, 0)} (${comparisons.join(', ')})`;
+};
+
+const buildMonthlyHeadline = (context, granularity, seriesRows, monthlyRows, allMonthlyRows, salesTargetMeta, profitTargetMeta) => {
+    const rangeLabel = getRangeLabelForSeries(seriesRows, granularity);
+    const currentTotals = summarizeMonthlyRows(monthlyRows);
+    const priorYearMeta = buildPriorYearMonthlyMeta(monthlyRows, allMonthlyRows);
+
+    const salesChunk = buildMetricStoryChunk(
+        'sales',
+        currentTotals.sales,
+        salesTargetMeta,
+        priorYearMeta.totals.sales,
+        priorYearMeta.available
+    );
+
+    const profitChunk = buildMetricStoryChunk(
+        'profit',
+        currentTotals.profit,
+        profitTargetMeta,
+        priorYearMeta.totals.profit,
+        priorYearMeta.available
+    );
+
+    return `${context.timeFilterLabel} (${rangeLabel}): ${salesChunk}; ${profitChunk}.`;
 };
 
 const calculatePercentDelta = (currentValue, previousValue) => {
@@ -588,10 +1255,24 @@ const initApp = async () => {
     try {
         const bootstrapData = await runGS('getAppBootstrapData');
         if (bootstrapData.overview.error) throw new Error(bootstrapData.overview.error);
+        if (bootstrapData.time_series && bootstrapData.time_series.error) throw new Error(bootstrapData.time_series.error);
         appState.data.overview = bootstrapData.overview;
+        appState.data.timeSeries = bootstrapData.time_series || null;
         updateLastUpdated();
         navigateTo('view-overview');
     } catch (error) { showError(error.message || 'Failed to initialize application.'); }
+};
+
+const rerenderCurrentViewWithFilters = () => {
+    if (appState.currentView === 'view-overview' && appState.data.overview) {
+        renderOverview(appState.data.overview, appState.data.productsLocations);
+    }
+    if (appState.currentView === 'view-monthly' && appState.data.monthly) {
+        renderMonthly(appState.data.monthly);
+    }
+    if (appState.currentView === 'view-entities' && appState.data.entities) {
+        renderEntities(appState.data.entities);
+    }
 };
 
 const bindEvents = () => {
@@ -611,13 +1292,37 @@ const bindEvents = () => {
         });
     });
 
-    // Global Time Filter
-    const globalFilter = document.getElementById('global-time-filter');
-    if (globalFilter) {
-        globalFilter.addEventListener('change', (e) => {
-            appState.globalTimeFilter = e.target.value;
-            if (appState.currentView === 'view-overview') renderOverview(appState.data.overview, appState.data.productsLocations);
-            if (appState.currentView === 'view-entities') renderEntities(appState.data.entities);
+    const globalTimeFilter = document.getElementById('global-time-filter');
+    const globalGranularityFilter = document.getElementById('global-granularity-filter');
+    const globalComparisonFilter = document.getElementById('global-comparison-filter');
+
+    if (globalTimeFilter) {
+        globalTimeFilter.addEventListener('change', (e) => {
+            const mode = getFilterModeForView(appState.currentView);
+            if (mode === 'monthly') {
+                appState.monthlyTimeFilter = e.target.value;
+                syncGranularityControl(getCurrentOverviewContext());
+            } else {
+                appState.legacyTimeFilter = e.target.value;
+            }
+            rerenderCurrentViewWithFilters();
+        });
+    }
+
+    if (globalGranularityFilter) {
+        globalGranularityFilter.addEventListener('change', (e) => {
+            if (getFilterModeForView(appState.currentView) !== 'monthly') return;
+            appState.globalGranularity = e.target.value;
+            rerenderCurrentViewWithFilters();
+        });
+    }
+
+    if (globalComparisonFilter) {
+        globalComparisonFilter.addEventListener('change', (e) => {
+            if (getFilterModeForView(appState.currentView) !== 'monthly') return;
+            appState.globalComparison = e.target.value;
+            syncGranularityControl(getCurrentOverviewContext());
+            rerenderCurrentViewWithFilters();
         });
     }
 
@@ -626,7 +1331,7 @@ const bindEvents = () => {
         try {
             const res = await runGS('refreshAllDashboardData');
             if (!res.success) throw new Error(res.message);
-            appState.data = { overview: null, monthly: null, entities: null, productsLocations: null };
+            appState.data = { overview: null, monthly: null, timeSeries: null, entities: null, productsLocations: null, productsLocationsStrategy: null };
             await loadViewData(appState.currentView, true);
             updateLastUpdated();
             hideLoading();
@@ -637,8 +1342,17 @@ const bindEvents = () => {
 
     const searchInput = document.getElementById('en-search-input');
     const sortSelect = document.getElementById('en-sort-select');
+    const plMonthFilter = document.getElementById('pl-month-filter');
     if (searchInput) searchInput.addEventListener('input', renderEntitiesTable);
     if (sortSelect) sortSelect.addEventListener('change', renderEntitiesTable);
+    if (plMonthFilter) {
+        plMonthFilter.addEventListener('change', (e) => {
+            appState.productMarketMonthFilter = String(e.target.value || '');
+            if (appState.currentView === 'view-products-locations' && appState.data.productsLocationsStrategy) {
+                renderProductsLocations(appState.data.productsLocationsStrategy);
+            }
+        });
+    }
 
     let resizeDebounceTimer = null;
     window.addEventListener('resize', () => {
@@ -647,8 +1361,14 @@ const bindEvents = () => {
             if (appState.currentView === 'view-overview' && appState.data.overview) {
                 renderOverview(appState.data.overview, appState.data.productsLocations);
             }
+            if (appState.currentView === 'view-monthly' && appState.data.monthly) {
+                renderMonthly(appState.data.monthly);
+            }
             if (appState.currentView === 'view-entities' && appState.data.entities) {
                 renderEntities(appState.data.entities);
+            }
+            if (appState.currentView === 'view-products-locations' && appState.data.productsLocationsStrategy) {
+                renderProductsLocations(appState.data.productsLocationsStrategy);
             }
         }, 200);
     });
@@ -660,15 +1380,8 @@ const navigateTo = async (viewId) => {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`.nav-item[data-target="${viewId}"]`).classList.add('active');
     
-    // Show/Hide Global Filter based on view
-    const filterContainer = document.getElementById('global-filter-container');
-    if (viewId === 'view-overview' || viewId === 'view-entities') {
-        filterContainer.style.display = 'block';
-    } else {
-        filterContainer.style.display = 'none';
-    }
-
     appState.currentView = viewId;
+    syncGlobalFilterUIForView(viewId);
     await loadViewData(viewId);
 };
 
@@ -677,23 +1390,37 @@ const loadViewData = async (viewId, forceRender = false) => {
         switch (viewId) {
             case 'view-overview':
                 if (!appState.data.overview) { showLoading('Loading Overview...'); appState.data.overview = await runGS('getOverviewData'); if (appState.data.overview.error) throw new Error(appState.data.overview.error); }
-                if (!appState.data.productsLocations) {
-                    appState.data.productsLocations = await runGS('getProductLocationData');
-                    if (appState.data.productsLocations.error) throw new Error(appState.data.productsLocations.error);
-                }
                 renderOverview(appState.data.overview, appState.data.productsLocations);
                 break;
             case 'view-monthly':
-                if (!appState.data.monthly) { showLoading('Loading Monthly Trends...'); appState.data.monthly = await runGS('getMonthlyData'); if (appState.data.monthly.error) throw new Error(appState.data.monthly.error); }
-                if (forceRender || !appState.charts['mo_main']) renderMonthly(appState.data.monthly);
+                if (!appState.data.overview) {
+                    appState.data.overview = await runGS('getOverviewData');
+                    if (appState.data.overview.error) throw new Error(appState.data.overview.error);
+                }
+                if (!appState.data.monthly) appState.data.monthly = { lightweight: true };
+                if (!appState.data.timeSeries) {
+                    showLoading('Loading Performance Pulse...');
+                    appState.data.timeSeries = await runGS('getTimeSeriesData');
+                    if (appState.data.timeSeries.error) throw new Error(appState.data.timeSeries.error);
+                }
+                syncGranularityControl(getCurrentOverviewContext());
+                renderMonthly(appState.data.monthly);
                 break;
             case 'view-entities':
+                if (!appState.data.overview) {
+                    appState.data.overview = await runGS('getOverviewData');
+                    if (appState.data.overview.error) throw new Error(appState.data.overview.error);
+                }
                 if (!appState.data.entities) { showLoading('Loading Clients...'); appState.data.entities = await runGS('getEntityData'); if (appState.data.entities.error) throw new Error(appState.data.entities.error); }
                 renderEntities(appState.data.entities); // Always re-render to apply filter
                 break;
             case 'view-products-locations':
-                if (!appState.data.productsLocations) { showLoading('Loading Products & Locations...'); appState.data.productsLocations = await runGS('getProductLocationData'); if (appState.data.productsLocations.error) throw new Error(appState.data.productsLocations.error); }
-                if (forceRender || !appState.charts['pl_prod_sales']) renderProductsLocations(appState.data.productsLocations);
+                if (!appState.data.productsLocationsStrategy) {
+                    showLoading('Loading Product & Market Strategy...');
+                    appState.data.productsLocationsStrategy = await runGS('getProductLocationStrategyData');
+                    if (appState.data.productsLocationsStrategy.error) throw new Error(appState.data.productsLocationsStrategy.error);
+                }
+                if (forceRender || !appState.charts['pl_product_strategy']) renderProductsLocations(appState.data.productsLocationsStrategy);
                 break;
         }
         hideLoading();
@@ -708,7 +1435,7 @@ const renderOverview = (data, plData) => {
 
     destroyChartsByPrefix('ov_');
 
-    const context = getOverviewTimeContext(data.monthly_data || [], appState.globalTimeFilter);
+    const context = getOverviewTimeContext(data.monthly_data || [], appState.legacyTimeFilter);
     const current = context.currentSummary;
     const previous = context.previousSummary;
     const isMobile = window.innerWidth <= 768;
@@ -888,8 +1615,8 @@ const renderOverview = (data, plData) => {
         setTextIfExists('ov-transactions-caption', context.periodLabel);
     }
 
-    // Trend chart (force min 12 months)
-    const minMonthsTrend = Math.max(12, context.isAllTime ? 1000 : parseInt(appState.globalTimeFilter));
+    const selectedMonths = context.isAllTime ? 1000 : (Number(appState.legacyTimeFilter) || 1);
+    const minMonthsTrend = Math.max(12, selectedMonths);
     const trendDataRows = context.allRows.slice(-minMonthsTrend);
 
     if (!trendDataRows.length) {
@@ -938,7 +1665,7 @@ const renderOverview = (data, plData) => {
                 y: { 
                     formatter: function(val, { seriesIndex }) {
                         if (seriesIndex < 2) return formatCurrency(val, 0);
-                        return val.toFixed(1) + '%';
+                        return `${(Number(val) || 0).toFixed(1)}%`;
                     }
                 } 
             }
@@ -992,60 +1719,255 @@ const renderMonthly = (data) => {
     if (!document.querySelector("#chart-monthly-main")) return;
     destroyChartsByPrefix('mo_');
 
-    document.getElementById('mo-total-sales').innerText = formatCurrency(data.kpis.total_cumulative_sales, 0);
-    document.getElementById('mo-total-profit').innerText = formatCurrency(data.kpis.total_cumulative_profit, 0);
-    const avgSales = data.table_data.length > 0 ? data.kpis.total_cumulative_sales / data.table_data.length : 0;
-    document.getElementById('mo-avg-sales').innerText = formatCurrency(avgSales, 0);
-    document.getElementById('mo-best-sales-month').innerText = formatMonth(data.kpis.best_month_by_sales);
-    document.getElementById('mo-best-profit-month').innerText = formatMonth(data.kpis.best_month_by_profit);
-    const totalTx = data.table_data.reduce((sum, row) => sum + row.tx_count, 0);
-    const avgTicket = totalTx > 0 ? data.kpis.total_cumulative_sales / totalTx : 0;
-    document.getElementById('mo-avg-ticket').innerText = formatCurrency(avgTicket);
+    const context = getCurrentOverviewContext();
+    syncGranularityControl(context);
 
-    const categories = data.categories.map(c => formatMonth(c));
-    
-    // X-Axis every 3 months
+    const seriesMeta = getWindowedGranularSeries(context, appState.globalGranularity);
+    if (seriesMeta.granularity !== appState.globalGranularity) {
+        appState.globalGranularity = seriesMeta.granularity;
+        const granularitySelect = document.getElementById('global-granularity-filter');
+        if (granularitySelect) granularitySelect.value = appState.globalGranularity;
+    }
+
+    const periodRows = seriesMeta.currentSeries;
+    const comparisonMode = appState.globalComparison || 'prior_year';
+    const comparisonSeries = buildComparisonSeries(periodRows, seriesMeta.allSeries, comparisonMode, 'sales', seriesMeta.granularity);
+    const isMobile = window.innerWidth <= 768;
+
+    const periodHeader = document.getElementById('mo-period-header');
+    if (periodHeader) {
+        periodHeader.innerText = seriesMeta.granularity === 'daily' ? 'Day' : (seriesMeta.granularity === 'weekly' ? 'Week' : 'Month');
+    }
+
+    const tbody = document.getElementById('table-monthly-body');
+    const mobileCards = document.getElementById('mo-mobile-cards');
+    const monthlyWindowRows = context.currentRows || [];
+    const allMonthlyRows = context.allRows || [];
+    const monthlyTotals = summarizeMonthlyRows(monthlyWindowRows);
+    const priorYearMeta = buildPriorYearMonthlyMeta(monthlyWindowRows, allMonthlyRows);
+    const salesTargetMeta = buildTargetWindowMeta(monthlyWindowRows, 'sales', 'target_sales');
+    const profitTargetMeta = buildTargetWindowMeta(monthlyWindowRows, 'profit', 'target_profit');
+
+    if (!periodRows.length) {
+        setTextIfExists('mo-dynamic-headline', `No active period data is available through ${OVERVIEW_TIME_LIMIT.cutoffDateLabel}.`);
+        setTextIfExists('mo-context-subtitle', `${context.timeFilterLabel} | ${GRANULARITY_LABELS[seriesMeta.granularity]} | No data points available.`);
+        setTextIfExists('mo-kpi-sales-period', '--');
+        setTextIfExists('mo-kpi-profit-period', '--');
+        setTextIfExists('mo-kpi-sales-target', 'N/A');
+        setTextIfExists('mo-kpi-profit-target', 'N/A');
+        setTextIfExists('mo-kpi-cost-ratio', '--');
+        setTextIfExists('mo-kpi-expense-ratio', '--');
+        setTextIfExists('mo-kpi-weekday', 'N/A');
+
+        setTextIfExists('mo-kpi-sales-period-sub', `Period: ${context.timeFilterLabel}. Baseline: no data.`);
+        setTextIfExists('mo-kpi-profit-period-sub', `Period: ${context.timeFilterLabel}. Baseline: no data.`);
+        setTextIfExists('mo-kpi-sales-target-sub', `Period: ${context.timeFilterLabel}. No valid target points in this window.`);
+        setTextIfExists('mo-kpi-profit-target-sub', `Period: ${context.timeFilterLabel}. Profit target data is unavailable.`);
+        setTextIfExists('mo-kpi-cost-ratio-sub', `Period: ${context.timeFilterLabel}. Cost ratio cannot be calculated without sales.`);
+        setTextIfExists('mo-kpi-expense-ratio-sub', `Period: ${context.timeFilterLabel}. Expense ratio cannot be calculated without sales.`);
+        setTextIfExists('mo-kpi-weekday-sub', `Period: ${context.timeFilterLabel}. Weekday ranking is unavailable without daily rows.`);
+        setTextIfExists('mo-main-chart-comment', `No comparison insight available because ${context.timeFilterLabel} has no chart points.`);
+
+        renderChartEmptyState('chart-monthly-main', `No ${GRANULARITY_LABELS[seriesMeta.granularity].toLowerCase()} data available for ${context.timeFilterLabel}.`);
+        renderChartEmptyState('chart-monthly-composition', `No ${GRANULARITY_LABELS[seriesMeta.granularity].toLowerCase()} data available for ${context.timeFilterLabel}.`);
+        renderChartEmptyState('chart-monthly-percentages', `No ${GRANULARITY_LABELS[seriesMeta.granularity].toLowerCase()} data available for ${context.timeFilterLabel}.`);
+        renderChartEmptyState('chart-monthly-tx', `No ${GRANULARITY_LABELS[seriesMeta.granularity].toLowerCase()} data available for ${context.timeFilterLabel}.`);
+        renderChartEmptyState('chart-monthly-ticket', `No ${GRANULARITY_LABELS[seriesMeta.granularity].toLowerCase()} data available for ${context.timeFilterLabel}.`);
+
+        if (tbody) tbody.innerHTML = '';
+        if (mobileCards) mobileCards.innerHTML = '';
+        return;
+    }
+
+    const totalSales = periodRows.reduce((sum, row) => sum + (Number(row.sales) || 0), 0);
+    const avgSales = periodRows.length > 0 ? totalSales / periodRows.length : 0;
+    const rangeLabel = getRangeLabelForSeries(periodRows, seriesMeta.granularity);
+    const pointLabel = getGranularityPointLabel(seriesMeta.granularity);
+    const lastPoint = periodRows[periodRows.length - 1] || null;
+    const lastPointLabel = lastPoint ? formatPeriodByGranularity(lastPoint.periodStart, seriesMeta.granularity) : 'N/A';
+    const lastPointSales = lastPoint ? Number(lastPoint.sales) || 0 : 0;
+
+    setTextIfExists('mo-dynamic-headline', buildMonthlyHeadline(
+        context,
+        seriesMeta.granularity,
+        periodRows,
+        monthlyWindowRows,
+        allMonthlyRows,
+        salesTargetMeta,
+        profitTargetMeta
+    ));
+
+    setTextIfExists(
+        'mo-context-subtitle',
+        `${context.timeFilterLabel} | ${GRANULARITY_LABELS[seriesMeta.granularity]} | ${periodRows.length} ${pointLabel} | Avg ${formatCurrency(avgSales, 0)} per point | Last ${lastPointLabel}: ${formatCurrency(lastPointSales, 0)} | ${COMPARISON_LABELS[comparisonMode] || COMPARISON_LABELS.actual_only}`
+    );
+
+    const salesYoYDelta = priorYearMeta.available ? calculatePercentDelta(monthlyTotals.sales, priorYearMeta.totals.sales) : null;
+    const profitYoYDelta = priorYearMeta.available ? calculatePercentDelta(monthlyTotals.profit, priorYearMeta.totals.profit) : null;
+    const priorCoverageText = `${priorYearMeta.matchedMonths}/${priorYearMeta.totalMonths} months`;
+    const windowCompact = `Window: ${rangeLabel}`;
+
+    const salesBaselineText = comparisonMode === 'target'
+        ? (salesTargetMeta.hasTarget
+            ? `vs target ${formatSignedPercentValue((salesTargetMeta.attainment - 1) * 100, 1)} (${salesTargetMeta.pointsWithTarget}/${salesTargetMeta.totalPoints} months)`
+            : `vs target N/A (targets start ${TARGET_TIME_LIMIT.startLabel})`)
+        : comparisonMode === 'prior_year'
+            ? (priorYearMeta.available
+                ? `vs PY ${formatSignedPercentValue(salesYoYDelta, 1)} (${priorCoverageText})`
+                : 'vs PY N/A')
+            : 'actual only';
+
+    const profitBaselineText = comparisonMode === 'target'
+        ? (profitTargetMeta.hasTarget
+            ? `vs target ${formatSignedPercentValue((profitTargetMeta.attainment - 1) * 100, 1)} (${profitTargetMeta.pointsWithTarget}/${profitTargetMeta.totalPoints} months)`
+            : 'vs target N/A')
+        : comparisonMode === 'prior_year'
+            ? (priorYearMeta.available
+                ? `vs PY ${formatSignedPercentValue(profitYoYDelta, 1)} (${priorCoverageText})`
+                : 'vs PY N/A')
+            : 'actual only';
+
+    setTextIfExists('mo-kpi-sales-period', formatCurrency(monthlyTotals.sales, 0));
+    setTextIfExists('mo-kpi-profit-period', formatCurrency(monthlyTotals.profit, 0));
+    setTextIfExists('mo-kpi-sales-period-sub', `${windowCompact} | ${salesBaselineText}`);
+    setTextIfExists('mo-kpi-profit-period-sub', `${windowCompact} | ${profitBaselineText}`);
+
+    if (salesTargetMeta.hasTarget) {
+        setTextIfExists('mo-kpi-sales-target', formatPercent(salesTargetMeta.attainment, 1));
+        setTextIfExists(
+            'mo-kpi-sales-target-sub',
+            `${windowCompact} | Gap ${formatSignedCurrencyValue(salesTargetMeta.variance, 0)} | Coverage ${salesTargetMeta.pointsWithTarget}/${salesTargetMeta.totalPoints} months`
+        );
+    } else {
+        setTextIfExists('mo-kpi-sales-target', 'N/A');
+        setTextIfExists(
+            'mo-kpi-sales-target-sub',
+            `${windowCompact} | No valid target points in this window`
+        );
+    }
+
+    if (profitTargetMeta.hasTarget) {
+        setTextIfExists('mo-kpi-profit-target', formatPercent(profitTargetMeta.attainment, 1));
+        setTextIfExists(
+            'mo-kpi-profit-target-sub',
+            `${windowCompact} | Gap ${formatSignedCurrencyValue(profitTargetMeta.variance, 0)} | Coverage ${profitTargetMeta.pointsWithTarget}/${profitTargetMeta.totalPoints} months`
+        );
+    } else {
+        setTextIfExists('mo-kpi-profit-target', 'N/A');
+        setTextIfExists(
+            'mo-kpi-profit-target-sub',
+            `${windowCompact} | Profit target not available`
+        );
+    }
+
+    const costRatio = monthlyTotals.sales > 0 ? monthlyTotals.cost / monthlyTotals.sales : null;
+    const expenseRatio = monthlyTotals.sales > 0 ? monthlyTotals.expenses / monthlyTotals.sales : null;
+    const priorCostRatio = priorYearMeta.available && priorYearMeta.totals.sales > 0 ? priorYearMeta.totals.cost / priorYearMeta.totals.sales : null;
+    const priorExpenseRatio = priorYearMeta.available && priorYearMeta.totals.sales > 0 ? priorYearMeta.totals.expenses / priorYearMeta.totals.sales : null;
+    const costRatioDeltaPp = hasNumericValue(costRatio) && hasNumericValue(priorCostRatio) ? (costRatio - priorCostRatio) * 100 : null;
+    const expenseRatioDeltaPp = hasNumericValue(expenseRatio) && hasNumericValue(priorExpenseRatio) ? (expenseRatio - priorExpenseRatio) * 100 : null;
+
+    setTextIfExists('mo-kpi-cost-ratio', hasNumericValue(costRatio) ? formatPercent(costRatio, 1) : 'N/A');
+    setTextIfExists(
+        'mo-kpi-cost-ratio-sub',
+        hasNumericValue(costRatio)
+            ? `${windowCompact} | Cost/Sales | ${hasNumericValue(priorCostRatio) ? `vs PY ${formatSignedPercentValue(costRatioDeltaPp, 1)} p.p.` : 'vs PY N/A'}`
+            : `${windowCompact} | Cost ratio unavailable (sales = 0)`
+    );
+
+    setTextIfExists('mo-kpi-expense-ratio', hasNumericValue(expenseRatio) ? formatPercent(expenseRatio, 1) : 'N/A');
+    setTextIfExists(
+        'mo-kpi-expense-ratio-sub',
+        hasNumericValue(expenseRatio)
+            ? `${windowCompact} | Expenses/Sales | ${hasNumericValue(priorExpenseRatio) ? `vs PY ${formatSignedPercentValue(expenseRatioDeltaPp, 1)} p.p.` : 'vs PY N/A'}`
+            : `${windowCompact} | Expense ratio unavailable (sales = 0)`
+    );
+
+    const weekdayMeta = buildWeekdayRankingMeta(context, seriesMeta.granularity);
+    if (weekdayMeta.available) {
+        setTextIfExists('mo-kpi-weekday', `${weekdayMeta.best.label} / ${weekdayMeta.worst.label}`);
+        setTextIfExists(
+            'mo-kpi-weekday-sub',
+            `${windowCompact} | Avg daily sales: ${weekdayMeta.best.label} ${formatCurrency(weekdayMeta.best.avgSales, 0)} vs ${weekdayMeta.worst.label} ${formatCurrency(weekdayMeta.worst.avgSales, 0)} (${formatNumber(weekdayMeta.sampleDays)} days)`
+        );
+    } else {
+        setTextIfExists('mo-kpi-weekday', 'N/A');
+        setTextIfExists('mo-kpi-weekday-sub', `${windowCompact} | ${weekdayMeta.reason}`);
+    }
+
+    const categories = periodRows.map(row => formatPeriodByGranularity(row.periodStart, seriesMeta.granularity, isMobile));
     const xaxisConfig = {
-        categories: categories,
-        tickAmount: Math.max(1, Math.ceil(categories.length / 3)),
-        labels: { rotate: -45, style: { fontSize: '10px' } }
+        categories,
+        tickAmount: Math.max(1, Math.ceil(categories.length / (seriesMeta.granularity === 'daily' ? 6 : 3))),
+        labels: { rotate: seriesMeta.granularity === 'daily' ? -55 : -45, style: { fontSize: '10px' } }
     };
 
-    createChart('chart-monthly-main', {
-        series: [
-            { name: 'Sales', type: 'area', data: data.series_sales },
-            { name: 'Profit', type: 'line', data: data.series_profit },
-            { name: 'Cost', type: 'line', data: data.table_data.map(d => d.cost) },
-            { name: 'Expenses', type: 'line', data: data.table_data.map(d => d.expenses) }
-        ],
+    const mainSeries = [
+        { name: 'Sales', type: 'area', data: periodRows.map(d => d.sales) },
+        { name: 'Profit', type: 'line', data: periodRows.map(d => d.profit) },
+        { name: 'Cost', type: 'line', data: periodRows.map(d => d.cost) },
+        { name: 'Expenses', type: 'line', data: periodRows.map(d => d.expenses) }
+    ];
+
+    const hasComparisonOverlay = comparisonSeries.length > 0;
+
+    const baselineLabel = comparisonMode === 'target' ? 'Sales Target' : 'Sales PY';
+
+    if (comparisonSeries.length) {
+        mainSeries.push({
+            name: baselineLabel,
+            type: 'line',
+            data: comparisonSeries[0].data
+        });
+    }
+
+    if (hasComparisonOverlay) {
+        setTextIfExists('mo-main-chart-comment', `Comparison line active: ${baselineLabel}.`);
+    } else {
+        setTextIfExists('mo-main-chart-comment', 'Comparison line hidden (Actual only).');
+    }
+
+    const monthlyMainOptions = {
+        series: mainSeries,
         chart: { height: 350, type: 'line' },
-        stroke: { width: [0, 3, 2, 2], curve: 'smooth' },
-        fill: { type: ['solid', 'solid', 'solid', 'solid'], opacity: [0.1, 1, 1, 1] },
-        colors: [appState.colors.primaryMid, appState.colors.success, appState.colors.warning, appState.colors.danger],
+        stroke: {
+            width: hasComparisonOverlay ? [0, 3, 2, 2, 2] : [0, 3, 2, 2],
+            curve: 'smooth',
+            dashArray: hasComparisonOverlay ? [0, 0, 0, 0, 7] : [0, 0, 0, 0]
+        },
+        fill: {
+            type: hasComparisonOverlay ? ['solid', 'solid', 'solid', 'solid', 'solid'] : ['solid', 'solid', 'solid', 'solid'],
+            opacity: hasComparisonOverlay ? [0.1, 1, 1, 1, 1] : [0.1, 1, 1, 1]
+        },
+        colors: hasComparisonOverlay
+            ? [appState.colors.primaryMid, appState.colors.success, appState.colors.warning, appState.colors.danger, appState.colors.accent1]
+            : [appState.colors.primaryMid, appState.colors.success, appState.colors.warning, appState.colors.danger],
         xaxis: xaxisConfig,
         yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
         tooltip: { y: { formatter: (val) => formatCurrency(val) } }
-    }, 'mo_main');
+    };
+
+    createChart('chart-monthly-main', monthlyMainOptions, 'mo_main');
 
     createChart('chart-monthly-composition', {
         series: [
-            { name: 'Profit', data: data.series_profit },
-            { name: 'Expenses', data: data.table_data.map(d => d.expenses) },
-            { name: 'Cost', data: data.table_data.map(d => d.cost) }
+            { name: 'Profit', data: periodRows.map(d => d.profit) },
+            { name: 'Expenses', data: periodRows.map(d => d.expenses) },
+            { name: 'Cost', data: periodRows.map(d => d.cost) }
         ],
         chart: { type: 'bar', height: 300, stacked: true },
         colors: [appState.colors.success, appState.colors.danger, appState.colors.warning],
         xaxis: xaxisConfig,
         yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
-        dataLabels: { enabled: false }, // Removed fixed labels
+        dataLabels: { enabled: false },
         tooltip: { y: { formatter: (val) => formatCurrency(val) } },
         legend: { position: 'top' }
     }, 'mo_comp');
 
     createChart('chart-monthly-percentages', {
         series: [
-            { name: 'Margin %', data: data.table_data.map(d => d.avg_margin_pct * 100) },
-            { name: 'Profit %', data: data.table_data.map(d => d.avg_profit_pct * 100) }
+            { name: 'Margin %', data: periodRows.map(d => d.avg_margin_pct * 100) },
+            { name: 'Profit %', data: periodRows.map(d => d.avg_profit_pct * 100) }
         ],
         chart: { type: 'line', height: 300 },
         stroke: { width: 3, curve: 'smooth' },
@@ -1056,33 +1978,32 @@ const renderMonthly = (data) => {
     }, 'mo_pct');
 
     createChart('chart-monthly-tx', {
-        series: [{ name: 'Transactions', data: data.table_data.map(d => d.tx_count) }],
+        series: [{ name: 'Transactions', data: periodRows.map(d => d.tx_count) }],
         chart: { type: 'bar', height: 250 },
         colors: [appState.colors.primaryDark],
         xaxis: xaxisConfig,
         yaxis: { labels: { formatter: (val) => formatNumber(val) } },
-        dataLabels: { enabled: false } // Removed fixed labels
+        dataLabels: { enabled: false }
     }, 'mo_tx');
 
     createChart('chart-monthly-ticket', {
-        series: [{ name: 'Avg Ticket', data: data.table_data.map(d => d.avg_ticket) }],
+        series: [{ name: 'Avg Ticket', data: periodRows.map(d => d.avg_ticket) }],
         chart: { type: 'area', height: 250 },
         stroke: { width: 2, curve: 'straight' },
         fill: { opacity: 0.2 },
         colors: [appState.colors.accent1],
         xaxis: xaxisConfig,
         yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
-        dataLabels: { enabled: false }, // Removed fixed labels
+        dataLabels: { enabled: false },
         tooltip: { y: { formatter: (val) => formatCurrency(val) } }
     }, 'mo_ticket');
 
-    const tbody = document.getElementById('table-monthly-body');
-    if(tbody) {
+    if (tbody) {
         tbody.innerHTML = '';
-        data.table_data.forEach(row => {
+        periodRows.forEach(row => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><strong>${formatMonth(row.month_start)}</strong></td>
+                <td><strong>${formatPeriodByGranularity(row.periodStart, seriesMeta.granularity)}</strong></td>
                 <td class="text-right">${formatCurrency(row.sales)}</td>
                 <td class="text-right">${formatCurrency(row.cost)}</td>
                 <td class="text-right">${formatCurrency(row.expenses)}</td>
@@ -1096,6 +2017,29 @@ const renderMonthly = (data) => {
             tbody.appendChild(tr);
         });
     }
+
+    if (mobileCards) {
+        mobileCards.innerHTML = '';
+        periodRows.forEach(row => {
+            const card = document.createElement('article');
+            card.className = 'mo-period-card';
+            card.innerHTML = `
+                <div class="mo-period-card-head">
+                    <div class="mo-period-card-title">${formatPeriodByGranularity(row.periodStart, seriesMeta.granularity)}</div>
+                    <span class="badge badge-primary">${GRANULARITY_LABELS[seriesMeta.granularity] || 'Period'}</span>
+                </div>
+                <div class="mo-period-card-metrics">
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Sales</span><span class="mo-period-card-value">${formatCurrency(row.sales)}</span></div>
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Profit</span><span class="mo-period-card-value" style="color:${(Number(row.profit) || 0) >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(row.profit)}</span></div>
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Margin %</span><span class="mo-period-card-value">${formatPercent(row.avg_margin_pct)}</span></div>
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Profit %</span><span class="mo-period-card-value">${formatPercent(row.avg_profit_pct)}</span></div>
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Transactions</span><span class="mo-period-card-value">${formatNumber(row.tx_count)}</span></div>
+                    <div class="mo-period-card-metric"><span class="mo-period-card-label">Avg Ticket</span><span class="mo-period-card-value">${formatCurrency(row.avg_ticket)}</span></div>
+                </div>
+            `;
+            mobileCards.appendChild(card);
+        });
+    }
 };
 
 // ============================================================================
@@ -1104,8 +2048,6 @@ const renderMonthly = (data) => {
 const getEntityRowsForActivePeriod = (data, context) => {
     const allRows = Array.isArray(data.table_data) ? data.table_data.map(row => ({ ...row })) : [];
     if (context.isAllTime) return allRows;
-
-    const months = Math.max(1, parseInt(appState.globalTimeFilter, 10) || 1);
 
     if (data.has_time_dimension && Array.isArray(data.raw_rows) && data.raw_rows.length) {
         const normalizedRaw = normalizeRowsWithMonth(data.raw_rows).map(row => ({
@@ -1159,11 +2101,11 @@ const getEntityRowsForActivePeriod = (data, context) => {
         }));
     }
 
-    const referenceMonth = getLatestReferenceMonth();
-    const cutoffDate = new Date(referenceMonth.getFullYear(), referenceMonth.getMonth() - months + 1, 1);
+    const cutoffStart = startOfDay(context.windowStartDate || new Date(OVERVIEW_TIME_LIMIT.cutoffDate.getFullYear(), OVERVIEW_TIME_LIMIT.cutoffDate.getMonth(), 1));
+    const cutoffEnd = endOfDay(context.windowEndDate || OVERVIEW_TIME_LIMIT.cutoffDate);
     return allRows.filter(row => {
         const rowDate = toDateOrNull(row.last_sale_date);
-        return rowDate && rowDate >= cutoffDate && rowDate <= OVERVIEW_TIME_LIMIT.cutoffDate;
+        return rowDate && rowDate >= cutoffStart && rowDate <= cutoffEnd;
     });
 };
 
@@ -1201,7 +2143,7 @@ const renderEntities = (entityPayload) => {
     const isMobileView = window.innerWidth <= 768;
     const isSmallMobileView = window.innerWidth <= 480;
 
-    const context = getOverviewTimeContext((appState.data.overview && appState.data.overview.monthly_data) || [], appState.globalTimeFilter);
+    const context = getOverviewTimeContext((appState.data.overview && appState.data.overview.monthly_data) || [], appState.legacyTimeFilter);
     const filteredData = getEntityRowsForActivePeriod(entityPayload, context);
 
     const totalRevenue = filteredData.reduce((sum, row) => sum + (Number(row.sales) || 0), 0);
@@ -1846,151 +2788,991 @@ const renderEntitiesTable = () => {
 // ============================================================================
 // RENDER: PRODUCTS & LOCATIONS
 // ============================================================================
+const formatStrategyMonthLabel = (monthDate) => {
+    if (!(monthDate instanceof Date) || isNaN(monthDate.getTime())) return 'N/A';
+    const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(monthDate);
+    const yearLabel = new Intl.DateTimeFormat('en-US', { year: 'numeric' }).format(monthDate);
+    return `${monthLabel} - ${yearLabel}`;
+};
+
+const syncProductMarketMonthFilter = (rows = []) => {
+    const selectEl = document.getElementById('pl-month-filter');
+    const wrapEl = document.getElementById('pl-global-filter-container');
+    const contextEl = document.getElementById('pl-month-filter-context');
+    if (!selectEl) return { selectedMonthKey: null, monthOptions: [], activeLabel: '' };
+
+    const monthMap = new Map();
+    rows.forEach(row => {
+        const monthDateRaw = row && row.month_start ? toDateOrNull(row.month_start) : null;
+        if (!monthDateRaw || isNaN(monthDateRaw.getTime())) return;
+        const monthDate = monthStartFromDate(monthDateRaw);
+        if (monthDate > OVERVIEW_TIME_LIMIT.cutoffMonthStart) return;
+        monthMap.set(monthKeyFromDate(monthDate), monthDate);
+    });
+
+    const monthOptions = Array.from(monthMap.entries())
+        .map(([monthKey, monthDate]) => ({ monthKey, monthDate }))
+        .sort((a, b) => b.monthDate - a.monthDate)
+        .slice(0, 6);
+
+    if (!monthOptions.length) {
+        selectEl.innerHTML = '<option value="">No month data</option>';
+        selectEl.disabled = true;
+        appState.productMarketMonthFilter = '';
+        appState.productMarketMonthOptionsSignature = '';
+        if (wrapEl) wrapEl.style.opacity = '0.6';
+        if (contextEl) contextEl.innerText = 'No monthly options available for this strategy view.';
+        return { selectedMonthKey: null, monthOptions: [], activeLabel: '' };
+    }
+
+    const signature = monthOptions.map(item => item.monthKey).join('|');
+    if (signature !== appState.productMarketMonthOptionsSignature) {
+        selectEl.innerHTML = '';
+        monthOptions.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.monthKey;
+            option.innerText = formatStrategyMonthLabel(item.monthDate);
+            selectEl.appendChild(option);
+        });
+        appState.productMarketMonthOptionsSignature = signature;
+    }
+
+    const isCurrentSelectionValid = monthOptions.some(item => item.monthKey === appState.productMarketMonthFilter);
+    if (!isCurrentSelectionValid) {
+        appState.productMarketMonthFilter = monthOptions[0].monthKey;
+    }
+
+    selectEl.value = appState.productMarketMonthFilter;
+    selectEl.disabled = false;
+    if (wrapEl) wrapEl.style.opacity = '1';
+
+    const active = monthOptions.find(item => item.monthKey === appState.productMarketMonthFilter) || monthOptions[0];
+    const activeLabel = active ? formatStrategyMonthLabel(active.monthDate) : 'N/A';
+    if (contextEl) contextEl.innerText = `Commercial decisions in focus: ${activeLabel}.`;
+
+    return {
+        selectedMonthKey: active ? active.monthKey : null,
+        monthOptions,
+        activeLabel
+    };
+};
+
+const percentile = (values = [], ratio = 0.5) => {
+    const sorted = (values || [])
+        .map(value => Number(value))
+        .filter(value => !isNaN(value))
+        .sort((a, b) => a - b);
+
+    if (!sorted.length) return 0;
+
+    const safeRatio = Math.max(0, Math.min(1, ratio));
+    const index = Math.round((sorted.length - 1) * safeRatio);
+    return sorted[index];
+};
+
+const renderStrategicInsightsList = (containerId, insights = []) => {
+    const listEl = document.getElementById(containerId);
+    if (!listEl) return;
+
+    const toneMeta = {
+        positive: { icon: 'fa-check', color: 'var(--success)' },
+        warning: { icon: 'fa-triangle-exclamation', color: 'var(--warning)' },
+        danger: { icon: 'fa-circle-exclamation', color: 'var(--danger)' },
+        info: { icon: 'fa-lightbulb', color: 'var(--primary-mid)' }
+    };
+
+    listEl.innerHTML = '';
+
+    insights.forEach(item => {
+        const tone = item && item.tone ? item.tone : 'info';
+        const text = item && item.text ? String(item.text).trim() : '';
+        if (!text) return;
+
+        const meta = toneMeta[tone] || toneMeta.info;
+        const li = document.createElement('li');
+        li.style.display = 'flex';
+        li.style.gap = '10px';
+        li.style.alignItems = 'flex-start';
+        li.style.fontSize = '0.9rem';
+        li.innerHTML = `<i class="fas ${meta.icon}" style="color: ${meta.color}; margin-top: 4px;"></i><span>${text}</span>`;
+        listEl.appendChild(li);
+    });
+};
+
+const tuneLocationSalesProfitDataLabels = (chartRoot) => {
+    if (!chartRoot) return;
+
+    const labels = chartRoot.querySelectorAll('.apexcharts-data-labels text, .apexcharts-data-label');
+    const bars = chartRoot.querySelectorAll('.apexcharts-bar-series .apexcharts-bar-area');
+
+    labels.forEach((label, index) => {
+        const x = Number(label.getAttribute('x')) || 0;
+        const y = Number(label.getAttribute('y')) || 0;
+
+        label.setAttribute('transform', `rotate(-90 ${x} ${y})`);
+        label.style.fill = '#0f172a';
+        label.style.fontWeight = '600';
+        label.style.paintOrder = 'stroke';
+        label.style.stroke = '#ffffff';
+        label.style.strokeWidth = '2px';
+
+        const bar = bars[index];
+        if (!bar || typeof bar.getBBox !== 'function') return;
+
+        const barBox = bar.getBBox();
+        if (barBox.height < 28) {
+            label.setAttribute('y', String(y - 10));
+            label.style.fill = '#111827';
+        }
+    });
+};
+
 const renderProductsLocations = (data) => {
-    if (!document.querySelector("#chart-product-sales")) return;
+    if (!document.querySelector('#chart-product-strategy')) return;
     destroyChartsByPrefix('pl_');
 
-    const prod = data.products;
-    const loc = data.locations;
+    const prod = (data && data.products) || { list: [], raw_rows: [], category_distribution: [] };
+    const loc = (data && data.locations) || { list: [], raw_rows: [] };
 
-    document.getElementById('pl-top-product-sales').innerText = prod.top_product_by_sales;
-    document.getElementById('pl-top-product-profit').innerText = prod.top_product_by_profit;
-    document.getElementById('pl-top-category').innerText = prod.top_category_by_sales;
+    const productList = Array.isArray(prod.list) ? prod.list : [];
+    const allProductRawRows = normalizeRowsWithMonth(Array.isArray(prod.raw_rows) ? prod.raw_rows : []);
+    const hasProductRawData = allProductRawRows.length > 0;
+    const locationList = Array.isArray(loc.list) ? loc.list : [];
+    const allLocationRawRows = normalizeRowsWithMonth(Array.isArray(loc.raw_rows) ? loc.raw_rows : []);
+    const hasLocationRawData = allLocationRawRows.length > 0;
 
-    const topProdSales = prod.list.slice(0, 10);
-    const topProdProfit = [...prod.list].sort((a,b) => b.profit - a.profit).slice(0, 10);
+    const monthFilterSeed = allProductRawRows.length ? allProductRawRows : allLocationRawRows;
+    const monthFilterMeta = syncProductMarketMonthFilter(monthFilterSeed);
+    const selectedMonthKey = monthFilterMeta.selectedMonthKey;
+    const activeMonthLabel = monthFilterMeta.activeLabel || 'N/A';
 
-    createChart('chart-product-sales', {
-        series: [{ name: 'Sales', data: topProdSales.map(d => d.sales) }],
-        chart: { type: 'bar', height: 250 },
-        plotOptions: { bar: { horizontal: false, borderRadius: 3 } }, // Changed to vertical
-        colors: [appState.colors.primaryMid],
-        xaxis: { categories: topProdSales.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } }, // Slanted labels
-        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } }, // No decimals
-        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
-    }, 'pl_prod_sales');
+    const productRawRows = selectedMonthKey
+        ? allProductRawRows.filter(row => row.monthKey === selectedMonthKey)
+        : allProductRawRows;
+    const locationRawRows = selectedMonthKey
+        ? allLocationRawRows.filter(row => row.monthKey === selectedMonthKey)
+        : allLocationRawRows;
 
-    createChart('chart-product-profit', {
-        series: [{ name: 'Profit', data: topProdProfit.map(d => d.profit) }],
-        chart: { type: 'bar', height: 250 },
-        plotOptions: { bar: { horizontal: false, borderRadius: 3 } }, // Changed to vertical
-        colors: [appState.colors.success],
-        xaxis: { categories: topProdProfit.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } }, // Slanted labels
-        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } }, // No decimals
-        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
-    }, 'pl_prod_profit');
+    const productMap = new Map();
+    const addProductRow = (row) => {
+        const product = pickFirstTextValue(row.product, row.item) || 'Unknown Product';
+        const category = pickFirstTextValue(row.category) || 'Uncategorized';
 
-    createChart('chart-product-category', {
-        series: prod.category_distribution.map(d => d.sales),
-        labels: prod.category_distribution.map(d => d.category),
-        chart: { type: 'donut', height: 250 },
-        tooltip: { y: { formatter: (val) => formatCurrency(val) } },
-        legend: { position: 'bottom' }
-    }, 'pl_prod_cat');
+        if (!productMap.has(product)) {
+            productMap.set(product, {
+                product,
+                category,
+                sales: 0,
+                cost: 0,
+                margin: 0,
+                profit: 0,
+                tx_count: 0
+            });
+        }
 
-    createChart('chart-product-margins', {
-        series: [
-            { name: 'Margin %', data: topProdSales.map(d => d.avg_margin_pct * 100) },
-            { name: 'Profit %', data: topProdSales.map(d => d.avg_profit_pct * 100) }
-        ],
-        chart: { type: 'bar', height: 300 },
-        plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 2, dataLabels: { position: 'top' } } },
-        colors: [appState.colors.primaryLight, appState.colors.success],
-        xaxis: { categories: topProdSales.map(d => d.product), labels: { rotate: -45, style: { fontSize: '10px' } } },
-        yaxis: { labels: { formatter: (val) => val.toFixed(0) + '%' } },
-        dataLabels: { enabled: true, formatter: (val) => val.toFixed(2) + '%', style: { fontSize: '9px', colors: ["#304758"] }, offsetY: -20 }, // 2 decimals
-        tooltip: { y: { formatter: (val) => val.toFixed(2) + '%' } }
-    }, 'pl_prod_margins');
+        const item = productMap.get(product);
+        item.sales += Number(row.sales) || 0;
+        item.cost += Number(row.cost) || 0;
+        item.margin += Number(row.margin) || 0;
+        item.profit += Number(row.profit) || 0;
+        item.tx_count += Number(row.tx_count) || 0;
+
+        if ((!item.category || item.category === 'Uncategorized') && category) {
+            item.category = category;
+        }
+    };
+
+    if (hasProductRawData) productRawRows.forEach(addProductRow);
+    else productList.forEach(addProductRow);
+
+    const productAgg = Array.from(productMap.values())
+        .map(item => ({
+            ...item,
+            avg_margin_pct: item.sales > 0 ? item.margin / item.sales : 0,
+            avg_profit_pct: item.sales > 0 ? item.profit / item.sales : 0,
+            avg_ticket: item.tx_count > 0 ? item.sales / item.tx_count : 0
+        }))
+        .sort((a, b) => b.sales - a.sales);
+
+    const totalProductSales = productAgg.reduce((sum, item) => sum + (Number(item.sales) || 0), 0);
+    const salesMedian = percentile(productAgg.map(item => item.sales), 0.5);
+    const profitMedian = percentile(productAgg.map(item => item.profit), 0.5);
+    const avgProfitPct = productAgg.length
+        ? productAgg.reduce((sum, item) => sum + (Number(item.avg_profit_pct) || 0), 0) / productAgg.length
+        : 0;
+
+    const segmentCatalog = [
+        { key: 'scale', label: 'Scale & Defend', color: appState.colors.success, badge: 'success' },
+        { key: 'margin_risk', label: 'High Rev / Low Profitability', color: appState.colors.warning, badge: 'warning' },
+        { key: 'efficient', label: 'Efficient Niche', color: appState.colors.primaryMid, badge: 'primary' },
+        { key: 'turnaround', label: 'Turnaround or Exit', color: appState.colors.danger, badge: 'danger' }
+    ];
+
+    const classifyProduct = (item) => {
+        const highRevenue = (Number(item.sales) || 0) >= salesMedian;
+        const highProfit = (Number(item.profit) || 0) >= profitMedian;
+        const lowProfitability = (Number(item.avg_profit_pct) || 0) < avgProfitPct || (Number(item.profit) || 0) < 0;
+        const efficient = (Number(item.avg_profit_pct) || 0) >= avgProfitPct && (Number(item.profit) || 0) >= 0;
+
+        if (highRevenue && highProfit) return 'scale';
+        if (highRevenue && lowProfitability) return 'margin_risk';
+        if (!highRevenue && efficient) return 'efficient';
+        return 'turnaround';
+    };
+
+    productAgg.forEach(item => {
+        item.segmentKey = classifyProduct(item);
+        const meta = segmentCatalog.find(segment => segment.key === item.segmentKey) || segmentCatalog[3];
+        item.segmentLabel = meta.label;
+        item.segmentBadge = meta.badge;
+        item.segmentColor = meta.color;
+    });
+
+    const productsBySegment = {
+        scale: productAgg.filter(item => item.segmentKey === 'scale'),
+        margin_risk: productAgg.filter(item => item.segmentKey === 'margin_risk'),
+        efficient: productAgg.filter(item => item.segmentKey === 'efficient'),
+        turnaround: productAgg.filter(item => item.segmentKey === 'turnaround')
+    };
+
+    const setSegmentCard = (segmentKey, valueId, subtitleId, sortFn, subtitleBuilder) => {
+        const bucket = productsBySegment[segmentKey] || [];
+        if (!bucket.length) {
+            setTextIfExists(valueId, 'N/A');
+            setTextIfExists(subtitleId, 'No products in this segment.');
+            return;
+        }
+
+        const top = bucket.slice().sort(sortFn)[0];
+        setTextIfExists(valueId, top.product);
+        setTextIfExists(subtitleId, subtitleBuilder(top, bucket.length));
+    };
+
+    setSegmentCard(
+        'scale',
+        'pl-seg-scale',
+        'pl-seg-scale-sub',
+        (a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0),
+        (item, count) => `${count} products | ${formatCurrency(item.sales, 0)} sales | ${formatCurrency(item.profit, 0)} profit`
+    );
+    setSegmentCard(
+        'margin_risk',
+        'pl-seg-margin-risk',
+        'pl-seg-margin-risk-sub',
+        (a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0),
+        (item, count) => `${count} products | ${formatPercent(item.avg_profit_pct)} profit rate`
+    );
+    setSegmentCard(
+        'efficient',
+        'pl-seg-efficient',
+        'pl-seg-efficient-sub',
+        (a, b) => (Number(b.avg_profit_pct) || 0) - (Number(a.avg_profit_pct) || 0),
+        (item, count) => `${count} products | ${formatPercent(item.avg_profit_pct)} profit % | ${formatPercent(totalProductSales > 0 ? item.sales / totalProductSales : 0)} sales share`
+    );
+    setSegmentCard(
+        'turnaround',
+        'pl-seg-turnaround',
+        'pl-seg-turnaround-sub',
+        (a, b) => (Number(a.profit) || 0) - (Number(b.profit) || 0),
+        (item, count) => `${count} products | ${formatCurrency(item.profit, 0)} profit | ${formatPercent(item.avg_profit_pct)} profit %`
+    );
+
+    if (!productAgg.length) {
+        setTextIfExists('pl-product-strategy-comment', `No product-level data is available for ${activeMonthLabel}.`);
+        renderChartEmptyState('chart-product-strategy', `No product data available for ${activeMonthLabel}.`);
+        renderChartEmptyState('chart-product-sales-ranking', `No product ranking data available for ${activeMonthLabel}.`);
+        renderChartEmptyState('chart-product-profit-ranking', `No product ranking data available for ${activeMonthLabel}.`);
+    } else {
+        setTextIfExists(
+            'pl-product-strategy-comment',
+            `Quadrants for ${activeMonthLabel} use medians: Revenue ${formatCurrency(salesMedian, 0)} and Profit ${formatCurrency(profitMedian, 0)}.`
+        );
+
+        const topLabelProducts = new Set(productAgg.slice(0, Math.min(6, productAgg.length)).map(item => item.product));
+        const isMobile = window.innerWidth <= 768;
+
+        const scatterSeries = [];
+        const scatterColors = [];
+        segmentCatalog.forEach(segment => {
+            const bucket = productsBySegment[segment.key] || [];
+            if (!bucket.length) return;
+            scatterSeries.push({
+                name: segment.label,
+                data: bucket.map(item => ({
+                    x: Number(item.sales) || 0,
+                    y: Number(item.profit) || 0,
+                    product: item.product,
+                    category: item.category,
+                    marginPct: item.avg_margin_pct,
+                    profitPct: item.avg_profit_pct,
+                    segmentLabel: segment.label,
+                    showLabel: topLabelProducts.has(item.product)
+                }))
+            });
+            scatterColors.push(segment.color);
+        });
+
+        createChart('chart-product-strategy', {
+            series: scatterSeries,
+            chart: { type: 'scatter', height: 380, zoom: { enabled: true, type: 'xy' } },
+            colors: scatterColors,
+            markers: { size: isMobile ? 4 : 6, strokeWidth: 1 },
+            legend: { position: 'top', horizontalAlign: 'left' },
+            dataLabels: {
+                enabled: !isMobile,
+                formatter: (value, opts) => {
+                    const point = opts.w.config.series[opts.seriesIndex].data[opts.dataPointIndex];
+                    return point && point.showLabel ? point.product : '';
+                },
+                offsetY: -9,
+                style: { fontSize: '10px', colors: ['#1f2937'] }
+            },
+            xaxis: {
+                title: { text: 'Revenue' },
+                labels: { formatter: (val) => formatCurrencyCompact(val, 1) }
+            },
+            yaxis: {
+                title: { text: 'Profit' },
+                labels: { formatter: (val) => formatCurrencyCompact(val, 1) }
+            },
+            grid: { borderColor: '#edf2f7' },
+            annotations: {
+                xaxis: [{
+                    x: salesMedian,
+                    borderColor: appState.colors.primaryMid,
+                    strokeDashArray: 4,
+                    label: {
+                        text: `Median Revenue ${formatCurrencyCompact(salesMedian, 1)}`,
+                        style: { color: '#fff', background: appState.colors.primaryMid, fontSize: '10px' }
+                    }
+                }],
+                yaxis: [{
+                    y: profitMedian,
+                    borderColor: appState.colors.primaryDark,
+                    strokeDashArray: 4,
+                    label: {
+                        text: `Median Profit ${formatCurrencyCompact(profitMedian, 1)}`,
+                        style: { color: '#fff', background: appState.colors.primaryDark, fontSize: '10px' }
+                    }
+                }]
+            },
+            tooltip: {
+                custom: ({ seriesIndex, dataPointIndex, w }) => {
+                    const point = w.config.series[seriesIndex].data[dataPointIndex] || {};
+                    return `<div style="padding: 10px 12px; min-width: 200px;">
+                        <div style="font-weight: 600; color: #021640; margin-bottom: 4px;">${point.product || 'Product'}</div>
+                        <div style="font-size: 12px; color: #64748b;">${point.category || 'Uncategorized'} | ${point.segmentLabel || ''}</div>
+                        <div style="font-size: 12px; margin-top: 6px;">Revenue: <strong>${formatCurrency(point.x || 0, 0)}</strong></div>
+                        <div style="font-size: 12px;">Profit: <strong>${formatCurrency(point.y || 0, 0)}</strong></div>
+                        <div style="font-size: 12px;">Margin %: <strong>${formatPercent(point.marginPct || 0)}</strong></div>
+                        <div style="font-size: 12px;">Profit %: <strong>${formatPercent(point.profitPct || 0)}</strong></div>
+                    </div>`;
+                }
+            }
+        }, 'pl_product_strategy');
+
+        const topRevenueProducts = productAgg.slice(0, Math.min(10, productAgg.length));
+        const topProfitProducts = productAgg
+            .slice()
+            .sort((a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0))
+            .slice(0, Math.min(10, productAgg.length));
+
+        const topSalesShare = topRevenueProducts.slice(0, 3).reduce((sum, item) => sum + (Number(item.sales) || 0), 0);
+        const totalPositiveProfit = productAgg.reduce((sum, item) => sum + Math.max(0, Number(item.profit) || 0), 0);
+        const topProfitContribution = topProfitProducts
+            .slice(0, 3)
+            .reduce((sum, item) => sum + Math.max(0, Number(item.profit) || 0), 0);
+
+        setTextIfExists(
+            'pl-product-sales-support',
+            `In ${activeMonthLabel}, top 3 products account for ${formatPercent(totalProductSales > 0 ? topSalesShare / totalProductSales : 0)} of product revenue.`
+        );
+        setTextIfExists(
+            'pl-product-profit-support',
+            `In ${activeMonthLabel}, top 3 profit contributors explain ${formatPercent(totalPositiveProfit > 0 ? topProfitContribution / totalPositiveProfit : 0)} of positive profit.`
+        );
+
+        createChart('chart-product-sales-ranking', {
+            series: [{ name: 'Revenue', data: topRevenueProducts.map(item => Number(item.sales) || 0) }],
+            chart: { type: 'bar', height: 300 },
+            plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '68%' } },
+            colors: [appState.colors.primaryMid],
+            xaxis: {
+                categories: topRevenueProducts.map(item => item.product),
+                labels: { formatter: (val) => formatCurrency(val, 0) }
+            },
+            tooltip: { y: { formatter: (val) => formatCurrency(val, 0) } },
+            dataLabels: { enabled: false }
+        }, 'pl_rank_sales');
+
+        createChart('chart-product-profit-ranking', {
+            series: [{ name: 'Profit', data: topProfitProducts.map(item => Number(item.profit) || 0) }],
+            chart: { type: 'bar', height: 300 },
+            plotOptions: { bar: { horizontal: true, borderRadius: 3, barHeight: '68%' } },
+            colors: [function(params) {
+                const value = params && hasNumericValue(params.value) ? Number(params.value) : 0;
+                return value >= 0 ? appState.colors.success : appState.colors.danger;
+            }],
+            xaxis: {
+                categories: topProfitProducts.map(item => item.product),
+                labels: { formatter: (val) => formatCurrency(val, 0) }
+            },
+            tooltip: { y: { formatter: (val) => formatCurrency(val, 0) } },
+            dataLabels: { enabled: false }
+        }, 'pl_rank_profit');
+    }
 
     const tbodyProd = document.getElementById('table-products-body');
-    if(tbodyProd) {
+    const productsMobileCards = document.getElementById('pl-products-mobile-cards');
+    if (tbodyProd) {
         tbodyProd.innerHTML = '';
-        prod.list.forEach(row => {
+        productAgg.forEach(row => {
+            const profitColor = (Number(row.profit) || 0) >= 0 ? 'var(--success)' : 'var(--danger)';
+            const salesShare = totalProductSales > 0 ? (Number(row.sales) || 0) / totalProductSales : 0;
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${row.product}</strong></td>
                 <td><span class="badge badge-primary">${row.category}</span></td>
+                <td><span class="badge badge-${row.segmentBadge || 'primary'}">${row.segmentLabel || 'Unclassified'}</span></td>
                 <td class="text-right">${formatCurrency(row.sales)}</td>
-                <td class="text-right">${formatCurrency(row.cost)}</td>
-                <td class="text-right">${formatCurrency(row.margin)}</td>
-                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+                <td class="text-right" style="color:${profitColor}; font-weight:600;">${formatCurrency(row.profit)}</td>
                 <td class="text-center">${formatPercent(row.avg_margin_pct)}</td>
                 <td class="text-center" style="font-weight:500;">${formatPercent(row.avg_profit_pct)}</td>
+                <td class="text-center">${formatPercent(salesShare)}</td>
             `;
             tbodyProd.appendChild(tr);
         });
     }
 
-    document.getElementById('pl-top-location-sales').innerText = loc.top_location_by_sales;
-    document.getElementById('pl-top-location-target').innerText = loc.top_location_by_target_attainment;
-    const gapEl = document.getElementById('pl-target-gap');
-    if(gapEl) {
-        gapEl.innerText = formatCurrency(loc.total_target_gap);
-        if (loc.total_target_gap <= 0) {
-            gapEl.style.color = 'var(--success)';
-            gapEl.innerText = '+' + formatCurrency(Math.abs(loc.total_target_gap)) + ' (Over Target)';
-        }
+    if (productsMobileCards) {
+        productsMobileCards.innerHTML = '';
+        productAgg.forEach(row => {
+            const salesShare = totalProductSales > 0 ? (Number(row.sales) || 0) / totalProductSales : 0;
+            const card = document.createElement('article');
+            card.className = 'pl-mobile-card';
+            card.innerHTML = `
+                <div class="pl-mobile-card-head">
+                    <div class="pl-mobile-card-title">${row.product}</div>
+                    <span class="badge badge-${row.segmentBadge || 'primary'}">${row.segmentLabel || 'Unclassified'}</span>
+                </div>
+                <div class="pl-mobile-card-metrics">
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Category</span><span class="pl-mobile-card-value">${row.category || 'Uncategorized'}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Sales</span><span class="pl-mobile-card-value">${formatCurrency(row.sales)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Profit</span><span class="pl-mobile-card-value" style="color:${(Number(row.profit) || 0) >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(row.profit)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Margin %</span><span class="pl-mobile-card-value">${formatPercent(row.avg_margin_pct)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Profit %</span><span class="pl-mobile-card-value">${formatPercent(row.avg_profit_pct)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Sales Share</span><span class="pl-mobile-card-value">${formatPercent(salesShare)}</span></div>
+                </div>
+            `;
+            productsMobileCards.appendChild(card);
+        });
     }
 
-    createChart('chart-location-sales-target', {
-        series: [
-            { name: 'Actual Sales', data: loc.list.map(d => d.sales) },
-            { name: 'Target Sales', data: loc.list.map(d => d.target_sales) }
-        ],
-        chart: { type: 'bar', height: 250 },
-        plotOptions: { bar: { horizontal: false, columnWidth: '60%', borderRadius: 2, dataLabels: { position: 'top' } } },
-        colors: [appState.colors.primaryMid, appState.colors.warning],
-        xaxis: { categories: loc.list.map(d => d.location), labels: { rotate: -45, style: { fontSize: '10px' } } },
-        yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
-        dataLabels: { enabled: true, formatter: (val) => formatCurrency(val, 0), style: { fontSize: '9px', colors: ["#304758"] }, offsetY: -20 }, // No decimals
-        tooltip: { y: { formatter: (val) => formatCurrency(val) } }
-    }, 'pl_loc_vs');
+    const locationMap = new Map();
+    const addLocationRow = (row) => {
+        const location = pickFirstTextValue(row.location, row.store, row.region, row.city) || 'Unknown Location';
+        if (!locationMap.has(location)) {
+            locationMap.set(location, {
+                location,
+                sales: 0,
+                margin: 0,
+                profit: 0,
+                tx_count: 0
+            });
+        }
 
-    createChart('chart-location-profit', {
-        series: loc.list.map(d => Math.max(0, d.profit)),
-        labels: loc.list.map(d => d.location),
-        chart: { type: 'donut', height: 250 },
-        tooltip: { y: { formatter: (val) => formatCurrency(val) } },
-        legend: { position: 'bottom' }
-    }, 'pl_loc_profit');
+        const item = locationMap.get(location);
+        item.sales += Number(row.sales) || 0;
+        item.margin += Number(row.margin) || 0;
+        item.profit += Number(row.profit) || 0;
+        item.tx_count += Number(row.tx_count) || 0;
+    };
 
-    const sortedLoc = [...loc.list].sort((a,b) => b.target_attainment - a.target_attainment);
-    createChart('chart-location-attainment', {
-        series: [{ name: 'Attainment %', data: sortedLoc.map(d => d.target_attainment * 100) }],
-        chart: { type: 'bar', height: 350 }, // Increased height for full width
-        plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
-        colors: [function({ value }) {
-            if (value >= 100) return appState.colors.success;
-            if (value >= 80) return appState.colors.warning;
-            return appState.colors.danger;
-        }],
-        xaxis: { categories: sortedLoc.map(d => d.location), labels: { formatter: (val) => val.toFixed(0) + '%' } },
-        tooltip: { y: { formatter: (val) => val.toFixed(1) + '%' } },
-        annotations: { xaxis: [{ x: 100, borderColor: appState.colors.success, label: { text: 'Target (100%)', style: { color: '#fff', background: appState.colors.success } } }] }
-    }, 'pl_loc_attain');
+    if (hasLocationRawData) locationRawRows.forEach(addLocationRow);
+    else locationList.forEach(addLocationRow);
+
+    const locationAgg = Array.from(locationMap.values())
+        .map(item => ({
+            ...item,
+            margin_pct: item.sales > 0 ? item.margin / item.sales : 0,
+            avg_ticket: item.tx_count > 0 ? item.sales / item.tx_count : 0
+        }))
+        .sort((a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0));
+
+    const totalLocationSales = locationAgg.reduce((sum, item) => sum + (Number(item.sales) || 0), 0);
+
+    if (locationAgg.length) {
+        createChart('chart-location-sales-profit', {
+            series: [
+                { name: 'Sales', data: locationAgg.map(item => Number(item.sales) || 0) },
+                { name: 'Profit', data: locationAgg.map(item => Number(item.profit) || 0) }
+            ],
+            chart: {
+                type: 'bar',
+                height: 290,
+                events: {
+                    mounted: (chartCtx) => {
+                        setTimeout(() => tuneLocationSalesProfitDataLabels(chartCtx && chartCtx.el), 0);
+                    },
+                    updated: (chartCtx) => {
+                        setTimeout(() => tuneLocationSalesProfitDataLabels(chartCtx && chartCtx.el), 0);
+                    }
+                }
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    borderRadius: 3,
+                    columnWidth: '52%',
+                    dataLabels: { position: 'top' }
+                }
+            },
+            colors: [appState.colors.primaryMid, appState.colors.success],
+            xaxis: { categories: locationAgg.map(item => item.location) },
+            yaxis: { labels: { formatter: (val) => formatCurrency(val, 0) } },
+            tooltip: { y: { formatter: (val) => formatCurrency(val, 0) } },
+            dataLabels: {
+                enabled: true,
+                offsetY: -6,
+                formatter: (val) => formatCurrencyCompact(val, 1),
+                style: {
+                    fontSize: '10px',
+                    fontWeight: '600',
+                    colors: ['#0f172a']
+                },
+                background: { enabled: false }
+            }
+        }, 'pl_loc_sales_profit');
+
+        createChart('chart-location-margin-ticket', {
+            series: [
+                { name: 'Margin %', type: 'column', data: locationAgg.map(item => (Number(item.margin_pct) || 0) * 100) },
+                { name: 'Average Ticket', type: 'line', data: locationAgg.map(item => Number(item.avg_ticket) || 0) }
+            ],
+            chart: { type: 'line', height: 290, stacked: false },
+            colors: [appState.colors.accent1, appState.colors.primaryDark],
+            stroke: { width: [0, 3], curve: 'smooth' },
+            markers: { size: [0, 4] },
+            xaxis: { categories: locationAgg.map(item => item.location) },
+            yaxis: [
+                {
+                    title: { text: 'Margin %' },
+                    labels: { formatter: (val) => `${val.toFixed(0)}%` }
+                },
+                {
+                    opposite: true,
+                    title: { text: 'Average Ticket' },
+                    labels: { formatter: (val) => formatCurrency(val, 0) }
+                }
+            ],
+            tooltip: {
+                shared: true,
+                y: [
+                    { formatter: (val) => `${(Number(val) || 0).toFixed(1)}%` },
+                    { formatter: (val) => formatCurrency(val, 0) }
+                ]
+            }
+        }, 'pl_loc_efficiency');
+    } else {
+        renderChartEmptyState('chart-location-sales-profit', `No location data available through ${OVERVIEW_TIME_LIMIT.cutoffMonthLabel}.`);
+        renderChartEmptyState('chart-location-margin-ticket', `No location efficiency data available through ${OVERVIEW_TIME_LIMIT.cutoffMonthLabel}.`);
+    }
 
     const tbodyLoc = document.getElementById('table-locations-body');
-    if(tbodyLoc) {
+    const locationsMobileCards = document.getElementById('pl-locations-mobile-cards');
+    if (tbodyLoc) {
         tbodyLoc.innerHTML = '';
-        loc.list.forEach(row => {
-            const variance = row.sales - row.target_sales;
-            const varianceColor = variance >= 0 ? 'var(--success)' : 'var(--danger)';
-            const attainmentColor = row.target_attainment >= 1 ? 'var(--success)' : (row.target_attainment >= 0.8 ? 'var(--warning)' : 'var(--danger)');
-            
+        locationAgg.forEach(row => {
+            const salesShare = totalLocationSales > 0 ? (Number(row.sales) || 0) / totalLocationSales : 0;
+            const profitColor = (Number(row.profit) || 0) >= 0 ? 'var(--success)' : 'var(--danger)';
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${row.location}</strong></td>
                 <td class="text-right" style="font-weight:600;">${formatCurrency(row.sales)}</td>
-                <td class="text-right" style="color:var(--text-muted);">${formatCurrency(row.target_sales)}</td>
-                <td class="text-center" style="color:${attainmentColor}; font-weight:600;">${formatPercent(row.target_attainment)}</td>
-                <td class="text-right" style="color:${varianceColor};">${variance > 0 ? '+' : ''}${formatCurrency(variance)}</td>
-                <td class="text-right">${formatCurrency(row.cost)}</td>
-                <td class="text-right">${formatCurrency(row.expenses)}</td>
-                <td class="text-right">${formatCurrency(row.margin)}</td>
-                <td class="text-right" style="color:var(--success); font-weight:500;">${formatCurrency(row.profit)}</td>
+                <td class="text-right" style="color:${profitColor}; font-weight:600;">${formatCurrency(row.profit)}</td>
+                <td class="text-center">${formatPercent(row.margin_pct)}</td>
+                <td class="text-right">${row.avg_ticket > 0 ? formatCurrency(row.avg_ticket) : 'N/A'}</td>
+                <td class="text-center">${formatNumber(row.tx_count)}</td>
+                <td class="text-center">${formatPercent(salesShare)}</td>
             `;
             tbodyLoc.appendChild(tr);
         });
     }
+
+    if (locationsMobileCards) {
+        locationsMobileCards.innerHTML = '';
+        locationAgg.forEach(row => {
+            const salesShare = totalLocationSales > 0 ? (Number(row.sales) || 0) / totalLocationSales : 0;
+            const card = document.createElement('article');
+            card.className = 'pl-mobile-card';
+            card.innerHTML = `
+                <div class="pl-mobile-card-head">
+                    <div class="pl-mobile-card-title">${row.location}</div>
+                    <span class="badge badge-primary">Location</span>
+                </div>
+                <div class="pl-mobile-card-metrics">
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Sales</span><span class="pl-mobile-card-value">${formatCurrency(row.sales)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Profit</span><span class="pl-mobile-card-value" style="color:${(Number(row.profit) || 0) >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(row.profit)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Margin %</span><span class="pl-mobile-card-value">${formatPercent(row.margin_pct)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Average Ticket</span><span class="pl-mobile-card-value">${row.avg_ticket > 0 ? formatCurrency(row.avg_ticket) : 'N/A'}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Transactions</span><span class="pl-mobile-card-value">${formatNumber(row.tx_count)}</span></div>
+                    <div class="pl-mobile-card-metric"><span class="pl-mobile-card-label">Sales Share</span><span class="pl-mobile-card-value">${formatPercent(salesShare)}</span></div>
+                </div>
+            `;
+            locationsMobileCards.appendChild(card);
+        });
+    }
+
+    const matrixMap = new Map();
+    productRawRows.forEach(row => {
+        const product = pickFirstTextValue(row.product, row.item) || 'Unknown Product';
+        const location = pickFirstTextValue(row.location, row.store, row.region, row.city) || 'Unknown Location';
+        const category = pickFirstTextValue(row.category) || 'Uncategorized';
+        const key = `${product}|||${location}`;
+
+        if (!matrixMap.has(key)) {
+            matrixMap.set(key, {
+                product,
+                location,
+                category,
+                sales: 0,
+                margin: 0,
+                profit: 0,
+                tx_count: 0
+            });
+        }
+
+        const item = matrixMap.get(key);
+        item.sales += Number(row.sales) || 0;
+        item.margin += Number(row.margin) || 0;
+        item.profit += Number(row.profit) || 0;
+        item.tx_count += Number(row.tx_count) || 0;
+    });
+
+    const matrixCells = Array.from(matrixMap.values()).map(item => ({
+        ...item,
+        margin_pct: item.sales > 0 ? item.margin / item.sales : 0,
+        profit_pct: item.sales > 0 ? item.profit / item.sales : 0
+    }));
+
+    const matrixProducts = productAgg.slice(0, Math.min(10, productAgg.length)).map(item => item.product);
+    const matrixLocations = locationAgg.slice(0, Math.min(5, locationAgg.length)).map(item => item.location);
+    const matrixMetricSelect = document.getElementById('pl-matrix-metric');
+
+    const buildMatrixColorScale = (metricKey, values = []) => {
+        const safeValues = values.map(v => Number(v) || 0);
+
+        if (metricKey === 'sales') {
+            const max = Math.max(...safeValues, 0);
+            if (max <= 0) {
+                return {
+                    ranges: [
+                        { from: -1, to: 1, color: '#e2e8f0', name: 'No revenue signal' }
+                    ]
+                };
+            }
+            const cut1 = max * 0.33;
+            const cut2 = max * 0.66;
+            return {
+                ranges: [
+                    { from: 0, to: cut1, color: '#dbeafe', name: 'Low' },
+                    { from: cut1 + 0.0001, to: cut2, color: '#60a5fa', name: 'Medium' },
+                    { from: cut2 + 0.0001, to: max || 1, color: '#1d4ed8', name: 'High' }
+                ]
+            };
+        }
+
+        if (metricKey === 'profit') {
+            const min = Math.min(...safeValues, 0);
+            const max = Math.max(...safeValues, 0);
+
+            if (max <= 0 && min >= 0) {
+                return {
+                    ranges: [
+                        { from: -1, to: 1, color: '#e2e8f0', name: 'No profit signal' }
+                    ]
+                };
+            }
+
+            const positiveMid = max * 0.5;
+            const ranges = [];
+
+            if (min < 0) {
+                ranges.push({ from: min, to: -0.0001, color: '#fca5a5', name: 'Negative' });
+            }
+
+            if (max > 0) {
+                ranges.push({ from: 0, to: positiveMid, color: '#fde68a', name: 'Low' });
+                ranges.push({ from: positiveMid + 0.0001, to: max, color: '#34d399', name: 'High' });
+            } else {
+                ranges.push({ from: 0, to: 1, color: '#e2e8f0', name: 'Neutral' });
+            }
+
+            return { ranges };
+        }
+
+        return {
+            ranges: [
+                { from: -100, to: -0.0001, color: '#f87171', name: 'Negative %' },
+                { from: 0, to: 7, color: '#fde68a', name: '0% - 7%' },
+                { from: 7.0001, to: 15, color: '#86efac', name: '7% - 15%' },
+                { from: 15.0001, to: 100, color: '#16a34a', name: '> 15%' }
+            ]
+        };
+    };
+
+    const matrixMetricConfig = {
+        sales: {
+            label: 'Revenue intensity by product-market combination.',
+            valueGetter: (item) => Number(item.sales) || 0,
+            axisFormatter: (value) => formatCurrencyCompact(value, 1),
+            metricText: (value) => formatCurrency(value, 0)
+        },
+        profit: {
+            label: 'Profit contribution by product-market combination.',
+            valueGetter: (item) => Number(item.profit) || 0,
+            axisFormatter: (value) => formatCurrencyCompact(value, 1),
+            metricText: (value) => formatCurrency(value, 0)
+        },
+        profit_pct: {
+            label: 'Profitability by product-market combination.',
+            valueGetter: (item) => (Number(item.profit_pct) || 0) * 100,
+            axisFormatter: (value) => `${Number(value || 0).toFixed(0)}%`,
+            metricText: (value) => `${Number(value || 0).toFixed(1)}%`
+        }
+    };
+
+    const renderMatrix = (metricKey = 'sales') => {
+        const resolvedKey = matrixMetricConfig[metricKey] ? metricKey : 'sales';
+        const config = matrixMetricConfig[resolvedKey];
+        const cellIndex = new Map(matrixCells.map(cell => [`${cell.product}|||${cell.location}`, cell]));
+
+        const series = matrixLocations.map(location => ({
+            name: location,
+            data: matrixProducts.map(product => {
+                const cell = cellIndex.get(`${product}|||${location}`) || {
+                    product,
+                    location,
+                    sales: 0,
+                    margin: 0,
+                    profit: 0,
+                    margin_pct: 0,
+                    profit_pct: 0,
+                    tx_count: 0
+                };
+
+                return {
+                    x: product,
+                    y: config.valueGetter(cell),
+                    sales: Number(cell.sales) || 0,
+                    profit: Number(cell.profit) || 0,
+                    marginPct: Number(cell.margin_pct) || 0,
+                    profitPct: Number(cell.profit_pct) || 0,
+                    txCount: Number(cell.tx_count) || 0
+                };
+            })
+        }));
+
+        const values = [];
+        series.forEach(row => row.data.forEach(cell => values.push(Number(cell.y) || 0)));
+
+        setTextIfExists('pl-matrix-comment', `${config.label} ${activeMonthLabel}: top ${matrixProducts.length} products across ${matrixLocations.length} locations.`);
+
+        createChart('chart-product-location-matrix', {
+            series,
+            chart: { type: 'heatmap', height: 420 },
+            plotOptions: {
+                heatmap: {
+                    radius: 2,
+                    enableShades: true,
+                    shadeIntensity: 0.65,
+                    colorScale: buildMatrixColorScale(resolvedKey, values)
+                }
+            },
+            dataLabels: { enabled: false },
+            stroke: { width: 1, colors: ['#ffffff'] },
+            xaxis: {
+                title: { text: 'Products' },
+                labels: { rotate: -32, trim: true, style: { fontSize: '10px' } }
+            },
+            yaxis: { title: { text: 'Locations' } },
+            legend: { position: 'top' },
+            tooltip: {
+                custom: ({ seriesIndex, dataPointIndex, w }) => {
+                    const row = w.config.series[seriesIndex] || {};
+                    const point = row.data ? row.data[dataPointIndex] : {};
+                    return `<div style="padding: 10px 12px; min-width: 220px;">
+                        <div style="font-weight: 600; color: #021640; margin-bottom: 4px;">${point.x || 'Product'} @ ${row.name || 'Location'}</div>
+                        <div style="font-size: 12px; color: #64748b;">Selected metric: <strong>${config.metricText(point.y || 0)}</strong></div>
+                        <div style="font-size: 12px; margin-top: 6px;">Revenue: <strong>${formatCurrency(point.sales || 0, 0)}</strong></div>
+                        <div style="font-size: 12px;">Profit: <strong>${formatCurrency(point.profit || 0, 0)}</strong></div>
+                        <div style="font-size: 12px;">Margin %: <strong>${formatPercent(point.marginPct || 0)}</strong></div>
+                        <div style="font-size: 12px;">Profit %: <strong>${formatPercent(point.profitPct || 0)}</strong></div>
+                    </div>`;
+                }
+            }
+        }, 'pl_matrix_heatmap');
+    };
+
+    const hasMatrixSignal = matrixCells.some(item => (Number(item.sales) || 0) !== 0 || (Number(item.profit) || 0) !== 0);
+
+    if (!matrixCells.length || !matrixProducts.length || !matrixLocations.length || !hasMatrixSignal) {
+        setTextIfExists('pl-matrix-comment', `No product-location detail is available for ${activeMonthLabel}.`);
+        renderChartEmptyState('chart-product-location-matrix', `No Product x Location combinations are available for ${activeMonthLabel}.`);
+    } else {
+        const defaultMetric = matrixMetricSelect && matrixMetricConfig[matrixMetricSelect.value]
+            ? matrixMetricSelect.value
+            : 'sales';
+        if (matrixMetricSelect) {
+            matrixMetricSelect.value = defaultMetric;
+            matrixMetricSelect.onchange = () => renderMatrix(matrixMetricSelect.value);
+        }
+        renderMatrix(defaultMetric);
+    }
+
+    const categoryMap = new Map();
+    productAgg.forEach(item => {
+        const category = item.category || 'Uncategorized';
+        if (!categoryMap.has(category)) {
+            categoryMap.set(category, { category, sales: 0, profit: 0, margin: 0 });
+        }
+        const acc = categoryMap.get(category);
+        acc.sales += Number(item.sales) || 0;
+        acc.profit += Number(item.profit) || 0;
+        acc.margin += Number(item.margin) || 0;
+    });
+
+    const totalCategorySales = Array.from(categoryMap.values()).reduce((sum, item) => sum + (Number(item.sales) || 0), 0);
+    const totalCategoryProfit = Array.from(categoryMap.values()).reduce((sum, item) => sum + (Number(item.profit) || 0), 0);
+    const categoryAgg = Array.from(categoryMap.values())
+        .map(item => ({
+            ...item,
+            margin_pct: item.sales > 0 ? item.margin / item.sales : 0,
+            profit_pct: item.sales > 0 ? item.profit / item.sales : 0,
+            sales_share: totalCategorySales > 0 ? item.sales / totalCategorySales : 0,
+            profit_share: totalCategoryProfit !== 0 ? item.profit / totalCategoryProfit : 0
+        }))
+        .sort((a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0));
+
+    const matrixActiveCombos = matrixCells.filter(item => (Number(item.sales) || 0) > 0);
+    const topComboByProfit = matrixActiveCombos
+        .slice()
+        .sort((a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0))[0] || null;
+    const topComboBySales = matrixActiveCombos
+        .slice()
+        .sort((a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0))[0] || null;
+
+    const comboSalesP75 = percentile(matrixActiveCombos.map(item => item.sales), 0.75);
+    const comboProfitPctP40 = percentile(matrixActiveCombos.map(item => item.profit_pct), 0.4);
+    const highSalesLowProfitabilityCombo = matrixActiveCombos
+        .filter(item => (Number(item.sales) || 0) >= comboSalesP75 && (Number(item.profit_pct) || 0) <= comboProfitPctP40)
+        .sort((a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0))[0] || null;
+
+    const bestMarginLocation = locationAgg.slice().sort((a, b) => (Number(b.margin_pct) || 0) - (Number(a.margin_pct) || 0))[0] || null;
+    const weakestMarginLocation = locationAgg.slice().sort((a, b) => (Number(a.margin_pct) || 0) - (Number(b.margin_pct) || 0))[0] || null;
+
+    const topScaleProduct = (productsBySegment.scale || [])
+        .slice()
+        .sort((a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0))[0] || null;
+    const topMarginRiskProduct = (productsBySegment.margin_risk || [])
+        .slice()
+        .sort((a, b) => (Number(b.sales) || 0) - (Number(a.sales) || 0))[0] || null;
+    const topEfficientProduct = (productsBySegment.efficient || [])
+        .slice()
+        .sort((a, b) => (Number(b.avg_profit_pct) || 0) - (Number(a.avg_profit_pct) || 0))[0] || null;
+    const weakestProduct = (productsBySegment.turnaround || [])
+        .slice()
+        .sort((a, b) => (Number(a.profit) || 0) - (Number(b.profit) || 0))[0] || null;
+
+    const bestMarketForEfficient = topEfficientProduct
+        ? matrixActiveCombos
+            .filter(item => item.product === topEfficientProduct.product)
+            .sort((a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0))[0] || null
+        : null;
+
+    const topCategory = categoryAgg[0] || null;
+
+    const insights = [];
+    const addInsight = (tone, text) => {
+        if (!text) return;
+        if (insights.some(item => item.text === text)) return;
+        insights.push({ tone, text });
+    };
+
+    if (topScaleProduct) {
+        addInsight(
+            'positive',
+            `${topScaleProduct.product} is a scale priority with ${formatCurrency(topScaleProduct.sales, 0)} revenue and ${formatCurrency(topScaleProduct.profit, 0)} profit.`
+        );
+    }
+
+    if (topMarginRiskProduct) {
+        addInsight(
+            'warning',
+            `${topMarginRiskProduct.product} drives volume but low profitability (${formatPercent(topMarginRiskProduct.avg_profit_pct)}). Review pricing, discount, and cost-to-serve.`
+        );
+    }
+
+    if (topEfficientProduct) {
+        const marketSuffix = bestMarketForEfficient
+            ? `Best expansion market today: ${bestMarketForEfficient.location}.`
+            : 'Look for market expansion where sell-through is strongest.';
+        addInsight(
+            'info',
+            `${topEfficientProduct.product} is efficient (${formatPercent(topEfficientProduct.avg_profit_pct)} profit %) but underweighted (${formatPercent(totalProductSales > 0 ? topEfficientProduct.sales / totalProductSales : 0)} sales share). ${marketSuffix}`
+        );
+    }
+
+    if (weakestProduct) {
+        addInsight(
+            'danger',
+            `${weakestProduct.product} is underperforming (${formatCurrency(weakestProduct.profit, 0)} profit). Decide whether to correct mix/cost or reduce commercial focus.`
+        );
+    }
+
+    if (topCategory) {
+        addInsight(
+            'info',
+            `${topCategory.category} contributes ${formatPercent(topCategory.sales_share)} of sales and ${formatPercent(topCategory.profit_share)} of profit, so category strategy strongly impacts results.`
+        );
+    }
+
+    if (bestMarginLocation && weakestMarginLocation && bestMarginLocation.location !== weakestMarginLocation.location) {
+        addInsight(
+            'warning',
+            `${bestMarginLocation.location} leads margin (${formatPercent(bestMarginLocation.margin_pct)}), while ${weakestMarginLocation.location} is weaker (${formatPercent(weakestMarginLocation.margin_pct)}). Rebalance product mix by location.`
+        );
+    }
+
+    if (topComboByProfit) {
+        addInsight(
+            'positive',
+            `Top product-market combination by profit: ${topComboByProfit.product} in ${topComboByProfit.location} (${formatCurrency(topComboByProfit.profit, 0)} profit).`
+        );
+    }
+
+    if (highSalesLowProfitabilityCombo && (!topComboBySales || highSalesLowProfitabilityCombo.product !== topComboBySales.product || highSalesLowProfitabilityCombo.location !== topComboBySales.location)) {
+        addInsight(
+            'warning',
+            `Commercial correction opportunity: ${highSalesLowProfitabilityCombo.product} in ${highSalesLowProfitabilityCombo.location} has high revenue (${formatCurrency(highSalesLowProfitabilityCombo.sales, 0)}) but low profitability (${formatPercent(highSalesLowProfitabilityCombo.profit_pct)}).`
+        );
+    }
+
+    for (let i = insights.length; i < 3; i++) {
+        insights.push({
+            tone: 'info',
+            text: `Total product revenue in scope is ${formatCurrency(totalProductSales, 0)} across ${productAgg.length} products and ${locationAgg.length} locations.`
+        });
+    }
+
+    const finalInsights = insights.slice(0, 5);
+    renderStrategicInsightsList('pl-insights-list', finalInsights);
+
+    setTextIfExists(
+        'pl-insights-context',
+        `Auto-generated for ${activeMonthLabel} from ${productAgg.length} products, ${locationAgg.length} locations, and ${matrixActiveCombos.length} active product-market combinations.`
+    );
 };
 </script>

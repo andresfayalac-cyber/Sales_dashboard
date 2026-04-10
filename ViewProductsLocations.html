@@ -1,193 +1,193 @@
 <div id="products-locations-content" class="pl-wrapper">
-    
-    <div class="view-header" style="margin-bottom: 25px;">
-        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Products & Locations</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">Analyze performance across product lines and geographical regions.</p>
-    </div>
 
-    <!-- =================================================================== -->
-    <!-- SECTION A: PRODUCTS -->
-    <!-- =================================================================== -->
-    <div class="section-divider" style="margin: 30px 0 20px 0; border-bottom: 2px solid var(--primary-mid); padding-bottom: 10px; display: flex; align-items: center;">
-        <i class="fas fa-box-open" style="font-size: 1.2rem; color: var(--primary-mid); margin-right: 10px;"></i>
-        <h3 style="color: var(--primary-dark); font-size: 1.2rem; margin: 0;">Product Analysis</h3>
-    </div>
-
-    <!-- Product KPIs -->
-    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--primary-mid);">
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title" style="font-size: 0.75rem;">Top Product (Sales)</div>
-                <div class="kpi-value" id="pl-top-product-sales" style="font-size: 1.1rem; color: var(--primary-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Product by Sales">--</div>
-            </div>
+    <div class="view-header" style="margin-bottom: 22px;">
+        <div>
+            <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Product & Market Strategy</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Decision layer to prioritize what to sell more, where to push it, and where to correct commercial mix.</p>
         </div>
+        <p id="pl-month-filter-context" style="color: var(--text-muted); font-size: 0.78rem; margin: 8px 0 0 0;">Loading month context...</p>
+    </div>
 
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px; margin-bottom: 20px;">
         <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--success);">
             <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title" style="font-size: 0.75rem;">Top Product (Profit)</div>
-                <div class="kpi-value" id="pl-top-product-profit" style="font-size: 1.1rem; color: var(--success); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Product by Profit">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">High Revenue + High Profit</div>
+                <div class="kpi-value" id="pl-seg-scale" style="font-size: 1.08rem; color: var(--success); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="pl-seg-scale-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--accent-1);">
+        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--warning);">
             <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title" style="font-size: 0.75rem;">Top Category (Sales)</div>
-                <div class="kpi-value" id="pl-top-category" style="font-size: 1.1rem; color: var(--accent-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Category">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">High Revenue + Low Profitability</div>
+                <div class="kpi-value" id="pl-seg-margin-risk" style="font-size: 1.08rem; color: var(--warning); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="pl-seg-margin-risk-sub" style="font-size: 0.72rem;">--</div>
+            </div>
+        </div>
+
+        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--primary-mid);">
+            <div class="kpi-content" style="min-width: 0;">
+                <div class="kpi-title" style="font-size: 0.75rem;">Efficient Products, Low Commercial Weight</div>
+                <div class="kpi-value" id="pl-seg-efficient" style="font-size: 1.08rem; color: var(--primary-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="pl-seg-efficient-sub" style="font-size: 0.72rem;">--</div>
+            </div>
+        </div>
+
+        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--danger);">
+            <div class="kpi-content" style="min-width: 0;">
+                <div class="kpi-title" style="font-size: 0.75rem;">Low Performance Products</div>
+                <div class="kpi-value" id="pl-seg-turnaround" style="font-size: 1.08rem; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+                <div class="kpi-subtitle" id="pl-seg-turnaround-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
     </div>
 
-    <!-- Product Charts -->
-    <div class="charts-grid cols-3" style="margin-bottom: 20px;">
-        <div class="chart-card">
-            <div class="chart-header">
-                <h3 class="chart-title" style="font-size: 1rem;">Sales by Product</h3>
-            </div>
-            <div class="chart-container" id="chart-product-sales" style="min-height: 250px;"></div>
-        </div>
-
-        <div class="chart-card">
-            <div class="chart-header">
-                <h3 class="chart-title" style="font-size: 1rem;">Profit by Product</h3>
-            </div>
-            <div class="chart-container" id="chart-product-profit" style="min-height: 250px;"></div>
-        </div>
-
-        <div class="chart-card">
-            <div class="chart-header">
-                <h3 class="chart-title" style="font-size: 1rem;">Category Distribution</h3>
-            </div>
-            <div class="chart-container" id="chart-product-category" style="min-height: 250px;"></div>
-        </div>
-    </div>
-
-    <!-- Product Margins Chart -->
     <div class="charts-grid cols-1" style="margin-bottom: 20px;">
         <div class="chart-card">
-            <div class="chart-header">
-                <h3 class="chart-title">Margin & Profit % by Product</h3>
-                <span class="badge badge-success">Efficiency Comparison</span>
+            <div class="chart-header" style="align-items: flex-start; gap: 10px;">
+                <div>
+                    <h3 class="chart-title">Revenue vs Profit by Product</h3>
+                    <p id="pl-product-strategy-comment" style="margin: 6px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Loading product strategic quadrants...</p>
+                </div>
+                <span class="badge badge-success">Strategic Quadrants</span>
             </div>
-            <div class="chart-container" id="chart-product-margins" style="min-height: 300px;"></div>
+            <div class="chart-container" id="chart-product-strategy" style="min-height: 380px;"></div>
         </div>
     </div>
 
-    <!-- Product Table -->
-    <div class="chart-card" style="margin-bottom: 40px;">
-        <div class="chart-header">
-            <h3 class="chart-title"><i class="fas fa-list-ul" style="margin-right: 8px; color: var(--primary-mid);"></i>Product Details</h3>
+    <div class="charts-grid" style="margin-bottom: 20px;">
+        <div class="chart-card">
+            <div class="chart-header" style="align-items: flex-start; gap: 10px;">
+                <div>
+                    <h3 class="chart-title" style="font-size: 1rem;">Top Products by Revenue</h3>
+                    <p id="pl-product-sales-support" style="margin: 6px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Loading concentration context...</p>
+                </div>
+                <span class="badge badge-primary">Secondary Ranking</span>
+            </div>
+            <div class="chart-container" id="chart-product-sales-ranking" style="min-height: 300px;"></div>
         </div>
-        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+
+        <div class="chart-card">
+            <div class="chart-header" style="align-items: flex-start; gap: 10px;">
+                <div>
+                    <h3 class="chart-title" style="font-size: 1rem;">Top Products by Profit</h3>
+                    <p id="pl-product-profit-support" style="margin: 6px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Loading profitability context...</p>
+                </div>
+                <span class="badge badge-success">Secondary Ranking</span>
+            </div>
+            <div class="chart-container" id="chart-product-profit-ranking" style="min-height: 300px;"></div>
+        </div>
+    </div>
+
+    <div class="chart-card pl-table-card" style="margin-bottom: 34px;">
+        <div class="chart-header">
+            <h3 class="chart-title"><i class="fas fa-list-ul" style="margin-right: 8px; color: var(--primary-mid);"></i>Product Strategy Table</h3>
+        </div>
+        <div id="pl-products-mobile-cards" class="pl-mobile-cards"></div>
+        <div class="table-responsive" style="max-height: 330px; overflow-y: auto;">
             <table class="data-table">
                 <thead>
                     <tr>
                         <th>Product</th>
                         <th>Category</th>
+                        <th>Strategic Segment</th>
                         <th class="text-right">Sales</th>
-                        <th class="text-right">Cost</th>
-                        <th class="text-right">Margin</th>
                         <th class="text-right">Profit</th>
                         <th class="text-center">Margin %</th>
                         <th class="text-center">Profit %</th>
+                        <th class="text-center">Sales Share</th>
                     </tr>
                 </thead>
                 <tbody id="table-products-body">
-                    <!-- Rows will be injected here by JS -->
+                    <!-- Rows injected by JS -->
                 </tbody>
             </table>
         </div>
     </div>
 
-
-    <!-- =================================================================== -->
-    <!-- SECTION B: LOCATIONS -->
-    <!-- =================================================================== -->
-    <div class="section-divider" style="margin: 40px 0 20px 0; border-bottom: 2px solid var(--warning); padding-bottom: 10px; display: flex; align-items: center;">
+    <div class="section-divider" style="margin: 20px 0 16px 0; border-bottom: 2px solid var(--warning); padding-bottom: 10px; display: flex; align-items: center;">
         <i class="fas fa-map-marker-alt" style="font-size: 1.2rem; color: var(--warning); margin-right: 10px;"></i>
-        <h3 style="color: var(--primary-dark); font-size: 1.2rem; margin: 0;">Location Analysis & Targets</h3>
+        <h3 style="color: var(--primary-dark); font-size: 1.2rem; margin: 0;">Location Direct Comparison</h3>
     </div>
 
-    <!-- Location KPIs -->
-    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--primary-mid);">
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title" style="font-size: 0.75rem;">Top Location (Sales)</div>
-                <div class="kpi-value" id="pl-top-location-sales" style="font-size: 1.1rem; color: var(--primary-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Top Location by Sales">--</div>
-            </div>
-        </div>
-
-        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--success);">
-            <div class="kpi-content" style="min-width: 0;">
-                <div class="kpi-title" style="font-size: 0.75rem;">Best Target Attainment</div>
-                <div class="kpi-value" id="pl-top-location-target" style="font-size: 1.1rem; color: var(--success); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Best Target Attainment">--</div>
-            </div>
-        </div>
-
-        <div class="kpi-card" style="padding: 15px; border-left: 4px solid var(--danger);">
-            <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Total Target Gap</div>
-                <div class="kpi-value" id="pl-target-gap" style="font-size: 1.1rem; color: var(--danger);">--</div>
-                <div class="kpi-subtitle" style="font-size: 0.7rem;">Target - Actual Sales</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Location Charts -->
     <div class="charts-grid" style="margin-bottom: 20px;">
-        <!-- Sales vs Target -->
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title" style="font-size: 1rem;">Sales vs Target by Location</h3>
-                <span class="badge badge-primary">Performance</span>
+                <h3 class="chart-title" style="font-size: 1rem;">Sales & Profit by Location</h3>
+                <span class="badge badge-primary">Direct Comparison</span>
             </div>
-            <div class="chart-container" id="chart-location-sales-target" style="min-height: 250px;"></div>
+            <div class="chart-container" id="chart-location-sales-profit" style="min-height: 290px;"></div>
         </div>
 
-        <!-- Profit by Location (Donut) -->
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title" style="font-size: 1rem;">Profit Distribution</h3>
+                <h3 class="chart-title" style="font-size: 1rem;">Margin % & Average Ticket by Location</h3>
+                <span class="badge badge-success">Efficiency View</span>
             </div>
-            <div class="chart-container" id="chart-location-profit" style="min-height: 250px;"></div>
-        </div>
-    </div>
-
-    <!-- Target Attainment Chart (Full Width) -->
-    <div class="charts-grid cols-1" style="margin-bottom: 20px;">
-        <div class="chart-card">
-            <div class="chart-header">
-                <h3 class="chart-title">Target Attainment (%)</h3>
-                <span class="badge badge-warning">Goal Tracking</span>
-            </div>
-            <div class="chart-container" id="chart-location-attainment" style="min-height: 350px;"></div>
+            <div class="chart-container" id="chart-location-margin-ticket" style="min-height: 290px;"></div>
         </div>
     </div>
 
-    <!-- Location Table -->
-    <div class="chart-card" style="margin-bottom: 30px;">
+    <div class="chart-card pl-table-card" style="margin-bottom: 34px;">
         <div class="chart-header">
-            <h3 class="chart-title"><i class="fas fa-map" style="margin-right: 8px; color: var(--warning);"></i>Location Performance Details</h3>
+            <h3 class="chart-title"><i class="fas fa-map" style="margin-right: 8px; color: var(--warning);"></i>Location Comparison Table</h3>
         </div>
+        <div id="pl-locations-mobile-cards" class="pl-mobile-cards"></div>
         <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
             <table class="data-table">
                 <thead>
                     <tr>
                         <th>Location</th>
                         <th class="text-right">Sales</th>
-                        <th class="text-right">Target Sales</th>
-                        <th class="text-center">Attainment %</th>
-                        <th class="text-right">Variance</th>
-                        <th class="text-right">Cost</th>
-                        <th class="text-right">Expenses</th>
-                        <th class="text-right">Margin</th>
                         <th class="text-right">Profit</th>
+                        <th class="text-center">Margin %</th>
+                        <th class="text-right">Average Ticket</th>
+                        <th class="text-center">Transactions</th>
+                        <th class="text-center">Sales Share</th>
                     </tr>
                 </thead>
                 <tbody id="table-locations-body">
-                    <!-- Rows will be injected here by JS -->
+                    <!-- Rows injected by JS -->
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <div class="section-divider" style="margin: 20px 0 16px 0; border-bottom: 2px solid var(--primary-mid); padding-bottom: 10px; display: flex; align-items: center;">
+        <i class="fas fa-table-cells-large" style="font-size: 1.2rem; color: var(--primary-mid); margin-right: 10px;"></i>
+        <h3 style="color: var(--primary-dark); font-size: 1.2rem; margin: 0;">Product x Location Strategic Matrix</h3>
+    </div>
+
+    <div class="chart-card" style="margin-bottom: 30px;">
+        <div class="chart-header" style="align-items: flex-start; gap: 10px;">
+            <div>
+                <h3 class="chart-title">Product x Location Heatmap</h3>
+                <p id="pl-matrix-comment" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">Loading product-market combinations...</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <label for="pl-matrix-metric" style="font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.35px; font-weight: 600;">View</label>
+                <select id="pl-matrix-metric" style="padding: 7px 10px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-family: 'Inter', sans-serif; font-size: 0.82rem; color: var(--primary-dark);">
+                    <option value="sales" selected>Revenue Intensity</option>
+                    <option value="profit">Profit Contribution</option>
+                    <option value="profit_pct">Profitability %</option>
+                </select>
+            </div>
+        </div>
+        <div class="chart-container" id="chart-product-location-matrix" style="min-height: 420px;"></div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom: 20px;">
+        <div class="chart-header" style="align-items: flex-start;">
+            <div>
+                <h3 class="chart-title"><i class="fas fa-lightbulb" style="margin-right: 8px; color: var(--primary-mid);"></i>Strategic Insights</h3>
+                <p id="pl-insights-context" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">Loading recommendation context...</p>
+            </div>
+        </div>
+        <ul id="pl-insights-list" style="list-style: none; padding: 0; margin: 0; display: grid; gap: 10px;">
+            <li style="display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem;"><i class="fas fa-lightbulb" style="color: var(--primary-mid); margin-top: 4px;"></i><span>Loading...</span></li>
+            <li style="display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem;"><i class="fas fa-lightbulb" style="color: var(--primary-mid); margin-top: 4px;"></i><span>Loading...</span></li>
+            <li style="display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem;"><i class="fas fa-lightbulb" style="color: var(--primary-mid); margin-top: 4px;"></i><span>Loading...</span></li>
+        </ul>
     </div>
 
 </div>

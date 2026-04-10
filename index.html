@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sales Intelligence Dashboard | Data Science Portfolio</title>
+    <title>Nexus Corp | Sales Intelligence Command Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <?!= include('Styles'); ?>
@@ -21,15 +21,38 @@
     <div class="app-layout">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-brand">
-                <div class="brand-icon"><i class="fas fa-chart-pie"></i></div>
-                <div class="brand-text"><h2>Analytics</h2><span>Portfolio</span></div>
+                <div class="brand-icon" aria-hidden="true">
+                    <svg class="brand-logo" viewBox="0 0 64 64" role="img" focusable="false">
+                        <defs>
+                            <linearGradient id="nexusLogoBg" x1="12%" y1="8%" x2="88%" y2="92%">
+                                <stop offset="0%" stop-color="#1d4ed8"></stop>
+                                <stop offset="100%" stop-color="#0b1f4f"></stop>
+                            </linearGradient>
+                            <linearGradient id="nexusLogoStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#dbeafe"></stop>
+                                <stop offset="100%" stop-color="#7dd3fc"></stop>
+                            </linearGradient>
+                            <linearGradient id="nexusLogoAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#67e8f9"></stop>
+                                <stop offset="100%" stop-color="#38bdf8"></stop>
+                            </linearGradient>
+                        </defs>
+                        <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#nexusLogoBg)"></rect>
+                        <rect x="4.8" y="4.8" width="54.4" height="54.4" rx="15.2" fill="none" stroke="#93c5fd" stroke-opacity="0.42"></rect>
+                        <path d="M18 46V18" stroke="url(#nexusLogoStroke)" stroke-width="5.5" stroke-linecap="round"></path>
+                        <path d="M18 18L46 46" stroke="url(#nexusLogoAccent)" stroke-width="5.5" stroke-linecap="round"></path>
+                        <path d="M46 46V18" stroke="url(#nexusLogoStroke)" stroke-width="5.5" stroke-linecap="round"></path>
+                        <circle cx="46" cy="18" r="3.2" fill="#67e8f9"></circle>
+                    </svg>
+                </div>
+                <div class="brand-text"><h2>Nexus Corp</h2><span>Commercial Intelligence</span></div>
             </div>
             <nav class="sidebar-nav">
                 <ul id="nav-menu">
                     <li class="nav-item active" data-target="view-overview"><i class="fas fa-home"></i><span>Overview</span></li>
-                    <li class="nav-item" data-target="view-monthly"><i class="fas fa-calendar-alt"></i><span>Monthly Trends</span></li>
+                    <li class="nav-item" data-target="view-monthly"><i class="fas fa-calendar-alt"></i><span>Performance Pulse</span></li>
                     <li class="nav-item" data-target="view-entities"><i class="fas fa-users"></i><span>Clients</span></li>
-                    <li class="nav-item" data-target="view-products-locations"><i class="fas fa-map-marker-alt"></i><span>Products & Locations</span></li>
+                    <li class="nav-item" data-target="view-products-locations"><i class="fas fa-chess-knight"></i><span>Product & Market Strategy</span></li>
                 </ul>
             </nav>
         </aside>
@@ -39,14 +62,14 @@
                 <div class="header-left" style="display: flex; align-items: center; gap: 15px;">
                     <button id="mobile-menu-btn" class="mobile-menu-btn" style="display: none; background: none; border: none; font-size: 1.5rem; color: var(--primary-dark); cursor: pointer;"><i class="fas fa-bars"></i></button>
                     <div>
-                        <h1 class="dashboard-title">Sales Intelligence Dashboard</h1>
-                        <p class="dashboard-subtitle">Portfolio Project | Google Apps Script + Google Sheets</p>
+                        <h1 class="dashboard-title">Nexus Corp Sales Intelligence Command Center</h1>
+                        <p class="dashboard-subtitle">Enterprise reporting for revenue, profitability, client performance, and market strategy.</p>
                     </div>
                 </div>
                 
                 <div class="header-right">
                     <div class="global-filter" id="global-filter-container" style="display: none;">
-                        <div class="global-filter-row">
+                        <div class="global-filter-row global-filter-row-multi">
                             <label for="global-time-filter" class="global-filter-label">Time Window</label>
                             <select id="global-time-filter" class="exec-filter real-filter" style="border-left: 2px solid var(--primary-mid);">
                                 <option value="all">All Time (through Feb 2026)</option>
@@ -54,6 +77,30 @@
                                 <option value="6">Last 6 Months</option>
                                 <option value="3">Last 3 Months</option>
                                 <option value="1" selected>Last 1 Month</option>
+                            </select>
+
+                            <label for="global-granularity-filter" class="global-filter-label" style="display: none;">Granularity</label>
+                            <select id="global-granularity-filter" class="exec-filter real-filter" style="border-left: 2px solid var(--accent-1); display: none;">
+                                <option value="monthly" selected>Monthly</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="daily">Daily</option>
+                            </select>
+
+                            <label for="global-comparison-filter" class="global-filter-label" style="display: none;">Comparison</label>
+                            <select id="global-comparison-filter" class="exec-filter real-filter" style="border-left: 2px solid var(--warning); display: none;">
+                                <option value="prior_year" selected>Actual vs Prior Year</option>
+                                <option value="target">Actual vs Target</option>
+                                <option value="actual_only">Actual only</option>
+                            </select>
+                        </div>
+                        <div id="global-filter-warning" class="global-filter-warning" style="display: none;"></div>
+                    </div>
+
+                    <div class="global-filter" id="pl-global-filter-container" style="display: none;">
+                        <div class="global-filter-row">
+                            <label for="pl-month-filter" class="global-filter-label">Month</label>
+                            <select id="pl-month-filter" class="exec-filter real-filter" style="border-left: 2px solid var(--primary-mid); min-width: 150px;">
+                                <option value="">Loading...</option>
                             </select>
                         </div>
                     </div>

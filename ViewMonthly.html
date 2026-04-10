@@ -1,57 +1,66 @@
 <div id="monthly-content" class="monthly-wrapper">
     
     <div class="view-header" style="margin-bottom: 25px;">
-        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Monthly Trends</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">Analyze financial performance and volume metrics over time.</p>
+        <h2 style="color: var(--primary-dark); font-weight: 600; font-size: 1.5rem; margin-bottom: 5px;">Performance Pulse</h2>
+        <p id="mo-dynamic-headline" style="color: var(--primary-dark); font-size: 1rem; font-weight: 600; line-height: 1.35; margin: 0 0 6px 0;">Monthly performance headline will appear here.</p>
+        <p id="mo-context-subtitle" style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">Analyze financial performance and volume metrics over time.</p>
     </div>
 
-    <!-- SECTION: Mini KPIs -->
-    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 15px;">
-        <!-- Total Sales in Period -->
+    <!-- SECTION: Storytelling KPIs -->
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 15px;">
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Total Sales (Period)</div>
-                <div class="kpi-value" id="mo-total-sales" style="font-size: 1.2rem;">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Sales in Active Period</div>
+                <div class="kpi-value" id="mo-kpi-sales-period" style="font-size: 1.2rem;">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-sales-period-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <!-- Total Profit in Period -->
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Total Profit (Period)</div>
-                <div class="kpi-value" id="mo-total-profit" style="font-size: 1.2rem; color: var(--success);">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Profit in Active Period</div>
+                <div class="kpi-value" id="mo-kpi-profit-period" style="font-size: 1.2rem; color: var(--success);">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-profit-period-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <!-- Average Monthly Sales -->
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Avg Monthly Sales</div>
-                <div class="kpi-value" id="mo-avg-sales" style="font-size: 1.2rem; color: var(--primary-mid);">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Sales vs Target</div>
+                <div class="kpi-value" id="mo-kpi-sales-target" style="font-size: 1.2rem; color: var(--primary-mid);">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-sales-target-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <!-- Best Month by Sales -->
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Best Month (Sales)</div>
-                <div class="kpi-value" id="mo-best-sales-month" style="font-size: 1.1rem; color: var(--accent-1);">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Profit vs Target</div>
+                <div class="kpi-value" id="mo-kpi-profit-target" style="font-size: 1.2rem; color: var(--accent-1);">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-profit-target-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <!-- Best Month by Profit -->
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Best Month (Profit)</div>
-                <div class="kpi-value" id="mo-best-profit-month" style="font-size: 1.1rem; color: var(--accent-2);">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Cost Ratio</div>
+                <div class="kpi-value" id="mo-kpi-cost-ratio" style="font-size: 1.2rem; color: var(--accent-2);">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-cost-ratio-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
 
-        <!-- Average Ticket -->
         <div class="kpi-card" style="padding: 15px;">
             <div class="kpi-content">
-                <div class="kpi-title" style="font-size: 0.75rem;">Average Ticket</div>
-                <div class="kpi-value" id="mo-avg-ticket" style="font-size: 1.2rem;">--</div>
+                <div class="kpi-title" style="font-size: 0.75rem;">Expense Ratio</div>
+                <div class="kpi-value" id="mo-kpi-expense-ratio" style="font-size: 1.2rem;">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-expense-ratio-sub" style="font-size: 0.72rem;">--</div>
+            </div>
+        </div>
+
+        <div class="kpi-card" style="padding: 15px;">
+            <div class="kpi-content">
+                <div class="kpi-title" style="font-size: 0.75rem;">Best / Worst Weekday</div>
+                <div class="kpi-value" id="mo-kpi-weekday" style="font-size: 1.05rem;">--</div>
+                <div class="kpi-subtitle" id="mo-kpi-weekday-sub" style="font-size: 0.72rem;">--</div>
             </div>
         </div>
     </div>
@@ -61,7 +70,10 @@
         <!-- Main Area/Line Chart -->
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title">Financial Performance Over Time</h3>
+                <div>
+                    <h3 class="chart-title">Financial Performance Over Time</h3>
+                    <p id="mo-main-chart-comment" style="margin: 4px 0 0 0; font-size: 0.78rem; color: var(--text-muted);">Comparison context will appear here.</p>
+                </div>
                 <span class="badge badge-primary">Sales, Cost, Expenses & Profit</span>
             </div>
             <div class="chart-container" id="chart-monthly-main" style="min-height: 350px;"></div>
@@ -73,7 +85,7 @@
         <!-- Stacked Column Chart -->
         <div class="chart-card">
             <div class="chart-header">
-                <h3 class="chart-title">Monthly Composition</h3>
+                <h3 class="chart-title">Period Composition</h3>
                 <span class="badge badge-warning">Cost + Expenses + Profit</span>
             </div>
             <div class="chart-container" id="chart-monthly-composition"></div>
@@ -95,7 +107,7 @@
         <div class="chart-card">
             <div class="chart-header">
                 <h3 class="chart-title">Transaction Volume</h3>
-                <span class="badge badge-primary">Count per month</span>
+                <span class="badge badge-primary">Count per period</span>
             </div>
             <div class="chart-container" id="chart-monthly-tx" style="min-height: 250px;"></div>
         </div>
@@ -113,13 +125,16 @@
     <!-- SECTION: Data Table -->
     <div class="chart-card" style="margin-bottom: 30px;">
         <div class="chart-header">
-            <h3 class="chart-title"><i class="fas fa-table" style="margin-right: 8px; color: var(--primary-mid);"></i>Monthly Detail Data</h3>
+            <h3 class="chart-title"><i class="fas fa-table" style="margin-right: 8px; color: var(--primary-mid);"></i>Time-Series Detail Data</h3>
         </div>
+
+        <div id="mo-mobile-cards" class="mo-mobile-cards"></div>
+
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Month</th>
+                        <th id="mo-period-header">Month</th>
                         <th class="text-right">Sales</th>
                         <th class="text-right">Cost</th>
                         <th class="text-right">Expenses</th>
